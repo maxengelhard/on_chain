@@ -15,7 +15,8 @@ from .aevo_trading_tool.aevo_deposit import aevo_deposit
 
 class AevoClient:
     def __init__(self) -> None:
-        load_dotenv()
+        dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+        load_dotenv(dotenv_path=dotenv_path)
         self.ADDRESS = os.environ.get('address')
         self.PRIVATE_KEY = os.environ.get('private_key')
         self.SIGNING_KEY = os.environ.get('signing_key')
@@ -165,6 +166,6 @@ if __name__ == "__main__":
     # asyncio.run(aevo_create_order(instrument_id=1,is_buy=False,reduce_only=True,quantity=0.01))
     # response = asyncio.run(aevo_markets(asset='ETH',instrument='PERPETUAL'))
     aevo_client = AevoClient()
-    response = aevo_client.get_funding(coins=['ETH'])
+    response = asyncio.run(aevo_client.deposit(amount=1))
     print(response)
 

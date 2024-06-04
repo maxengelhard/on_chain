@@ -14,7 +14,8 @@ class AevoWebSocket:
         self.load_config()
 
     def load_config(self):
-        load_dotenv()
+        dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+        load_dotenv(dotenv_path=dotenv_path)
         self.address = os.environ.get('address')
         self.private_key = os.environ.get('private_key')
         self.signing_key = os.environ.get('signing_key')

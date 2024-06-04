@@ -9,7 +9,8 @@ from asyncio import (
 
 from .src.aevo.aevo import Aevo
 
-from .src.data import private_keys
+from dotenv import load_dotenv
+import os
 
 from .config import (
     DEPOSIT_PERCENTAGE,
@@ -20,11 +21,11 @@ from .config import (
     TOKEN,
 )
 
-
-async def process_tasks(private_key: str,amount:float) -> List[asyncio.Task]:
-    tasks = []
+async def process_tasks(amount:float) -> List[asyncio.Task]:
+    dotenv_path = os.path.join(os.path.dirname(__file__),'..','..', '.env')
+    load_dotenv(dotenv_path=dotenv_path)
     trader = Aevo(
-        private_key=private_key,
+        private_key=os.getenv('private_key'),
         open_positions=False,
         close_positions=False,
         token=TOKEN,
@@ -39,8 +40,7 @@ async def process_tasks(private_key: str,amount:float) -> List[asyncio.Task]:
 
 async def aevo_deposit(amount:float) -> None:
     tasks = []
-    for private_key in private_keys:
-        tasks.extend(await process_tasks(private_key,amount=amount))
+    tasks.extend(await process_tasks(amount=amount))
 
     await gather(*tasks)
 

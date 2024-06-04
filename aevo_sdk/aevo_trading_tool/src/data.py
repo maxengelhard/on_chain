@@ -10,7 +10,6 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 # Adjust the path to locate the ABI files correctly
 aevo_abi_path = os.path.join(dir_path, '..', 'assets', 'abi', 'aevo_abi.json')
 erc20_abi_path = os.path.join(dir_path, '..', 'assets', 'abi', 'erc20.json')
-wallets_path = os.path.join(dir_path,'..','wallets.txt')
 
 # Now use these paths to open your files
 with open(aevo_abi_path, 'r') as file:
@@ -18,5 +17,3 @@ with open(aevo_abi_path, 'r') as file:
 
 with open(erc20_abi_path, 'r') as file:
     ERC20_ABI = json.load(file)
-with open(wallets_path, 'r') as file:
-    private_keys = [line.strip() for line in file]
