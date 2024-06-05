@@ -55,9 +55,8 @@ class TradingBot:
         if not ctx: return
         mark_price = float(ctx['markPx'])
         await self.check_liquidation(mark_price=mark_price,platform='hyper')
-        print(f"hyper funding {float(ctx['funding']):12f}")
-        # self.hyper_funding_rate = float(ctx['funding']) * self.hyper_side
-        # await self.check_funding_rates()
+        self.hyper_funding_rate = float(ctx['funding']) * self.hyper_side
+        await self.check_funding_rates()
 
 
     async def process_aevo_message(self,msg):
@@ -68,24 +67,20 @@ class TradingBot:
         ticker = tickers[0]
         mark_price = float(ticker['mark']['price'])
         await self.check_liquidation(mark_price=mark_price,platform='aevo')
-        print(f"aevo funding {float(ticker['funding_rate']):12f}")
-        # self.aevo_funding_rate = float(ticker['funding_rate']) * self.aevo_side
-        # await self.check_funding_rates()
+        self.aevo_funding_rate = float(ticker['funding_rate']) * self.aevo_side
+        await self.check_funding_rates()
 
     async def check_funding_rates(self):
         if self.hyper_funding_rate and self.aevo_funding_rate:
             total_funding_rate = self.hyper_funding_rate + self.aevo_funding_rate
-            print(total_funding_rate)
             current_time = datetime.now()
             # check to see if it's been negative for an hour
             if total_funding_rate < 0:
                 print(f"Negative funding rates. Checking for negative since")
                 if not self.negative_since:
                     self.negative_since = current_time
-                    print(self.negative_since)
-                elif current_time - self.negative_since <= timedelta(hours=1) and not self.rebalance_triggered:
+                elif current_time - self.negative_since >= timedelta(hours=1) and not self.rebalance_triggered:
                     await self.close_rebalance_start()
-                    self.rebalance_triggered = True
             else:
                 self.negative_since = None
                 self.rebalance_triggered = False 
@@ -119,6 +114,8 @@ class TradingBot:
         if balanced:
             await self.funding_rates()
             await self.open_positions()
+            self.negative_since = None
+            self.rebalance_triggered = False 
 
     async def funding_rates(self):
         self.hyper_funding = self.hyper_client.get_funding(coins=self.coins)
