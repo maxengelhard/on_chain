@@ -198,3 +198,4 @@ class TradingBot:
 if __name__ == '__main__':
     bot = TradingBot()
     asyncio.run(bot.start())
+    
