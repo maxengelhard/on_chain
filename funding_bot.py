@@ -19,8 +19,11 @@ class TradingBot:
         self.threshold = 0.02
         self.hyper_ws = HyperLiquidWebSocket(message_callback=self.process_hyper_message)
         self.aevo_ws = AevoWebSocket(message_callback=self.process_aevo_message)
-        self.coins = ['ETH','BTC','SOL']
+        self.ws_started = False
+        self.coins = ['ETH','BTC','SOL','DOGE']
         self.leverage = 10
+        self.hyper_position = None
+        self.aevo_position = None
         self.position_coin = None
         self.hyper_funding = None
         self.aevo_funding = None
@@ -33,21 +36,39 @@ class TradingBot:
         self.rebalance_triggered = False  # Ensure we don't trigger rebalance repeatedly
 
     async def start(self):
-        await self.get_accounts() 
-        await asyncio.gather(
-            self.hyper_ws.start(coin=self.position_coin),
-            self.aevo_ws.start(coin=self.position_coin)
-        )
-    
+        await self.get_accounts()
+        while not self.ws_started:
+            if self.position_coin and not self.ws_started:
+                await asyncio.gather(
+                    self.hyper_ws.start(coin=self.position_coin),
+                    self.aevo_ws.start(coin=self.position_coin)
+                )
+                self.ws_started = True
+            elif not self.position_coin and self.ws_started:
+                await self.stop()
+                self.ws_started = False
+            await asyncio.sleep(1)
+        
     async def get_accounts(self):
         # Load positions from both platforms
         self.hyper_account = self.hyper_client.get_account()
-        self.hyper_position = self.hyper_account['assetPositions'][0]['position']  # Simplified access
-        self.position_coin = self.hyper_position['coin']
-        self.hyper_side = 1 if float(self.hyper_position['szi']) < 0 else -1
-        self.aevo_side = -1 if float(self.hyper_position['szi']) < 0 else 1 
         self.aevo_account = await self.aevo_client.get_account()
-        self.aevo_position = self.aevo_account['positions'][0]  # Assumes async fetch
+
+        if 'assetPositions' in self.hyper_account and self.hyper_account['assetPositions']:
+            self.hyper_position = self.hyper_account['assetPositions'][0]['position']
+            self.position_coin = self.hyper_position['coin']
+            self.hyper_side = 1 if float(self.hyper_position['szi']) < 0 else -1
+        else:
+            self.hyper_position = None
+            self.position_coin = None
+            self.hyper_side = None
+        # Ensure the 'positions' field exists and has at least one entry
+        if 'positions' in self.aevo_account and self.aevo_account['positions']:
+            self.aevo_position = self.aevo_account['positions'][0]
+            self.aevo_side = -1 if self.hyper_position and float(self.hyper_position['szi']) < 0 else 1
+        else:
+            self.aevo_position = None
+            self.aevo_side = None
 
     async def process_hyper_message(self,msg):
         data = msg.get('data',{}) 
@@ -80,7 +101,8 @@ class TradingBot:
                 if not self.negative_since:
                     self.negative_since = current_time
                 elif current_time - self.negative_since >= timedelta(hours=1) and not self.rebalance_triggered:
-                    await self.close_rebalance_start()
+                    print('would close')
+                    # await self.close_rebalance_start()
             else:
                 self.negative_since = None
                 self.rebalance_triggered = False 
@@ -109,34 +131,32 @@ class TradingBot:
         #### re balance #####
         # check and update balances again # 
         await self.get_accounts()
-        balanced = rebalance(hyper_client=self.hyper_client,hyper_account=self.hyper_account,aevo_account=self.aevo_account)  
-
+        balanced = await rebalance(hyper_client=self.hyper_client,aevo_client=self.aevo_client,hyper_account=self.hyper_account,aevo_account=self.aevo_account) 
         if balanced:
-            await self.funding_rates()
+            self.funding_rates()
             await self.open_positions()
             self.negative_since = None
             self.rebalance_triggered = False 
 
-    async def funding_rates(self):
+    def funding_rates(self):
         self.hyper_funding = self.hyper_client.get_funding(coins=self.coins)
-        self.aevo_funding = await self.aevo_client.get_funding(coins=self.coins)
+        self.aevo_funding = self.aevo_client.get_funding(coins=self.coins)
         highest_rates = {
             coin: {
-                'Highest Long Rate': (None, None),
-                'Highest Short Rate': (None, None)
+                'Highest Long Rate': (-float('inf'), None),
+                'Highest Short Rate': (-float('inf'), None)
             }
             for coin in self.coins
         }
         for coin in self.coins:
             aevo_coin = float(self.aevo_funding[coin]) * 100
-            hyper_coin = float(self.hyper_funding[coin]['funding'])*100
-            # Aggregate the data
+            hyper_coin = float(self.hyper_funding[coin]['funding'])*100  # Assuming 'funding' is meant to be 'furniture'
+
             data_sources = {
-                'AEVO': {'long_rate': -aevo_coin, 'short_rate': float(aevo_coin)},
+                'AEVO': {'long_rate': -aevo_coin, 'short_rate': aevo_coin},
                 'HYPER_LIQUID': {'long_rate': -hyper_coin, 'short_rate': hyper_coin}
             }
 
-            # Calculate the highest rates
             for source, rates in data_sources.items():
                 long_rate = rates['long_rate'] * 8760
                 short_rate = rates['short_rate'] * 8760
@@ -146,20 +166,24 @@ class TradingBot:
 
                 if short_rate > highest_rates[coin]['Highest Short Rate'][0]:
                     highest_rates[coin]['Highest Short Rate'] = (short_rate, source)
-        
+
+        # Calculate the maximum spread correctly
         max_spread = max(
-            (sum(rates.values()) for rates in highest_rates.values()),
+            (abs(rates['Highest Long Rate'][0] + rates['Highest Short Rate'][0]) for rates in highest_rates.values()),
             default=0
         )
 
+        # Find the coin with the maximum spread
         self.max_coin = max(
-            (coin for coin, rates in highest_rates.items() if sum(rates.values()) == max_spread),
-            default=''
+            (coin for coin, rates in highest_rates.items() if abs(rates['Highest Long Rate'][0] + rates['Highest Short Rate'][0]) == max_spread),
+            default=None
         )
 
+        # Extract the details for the maximum spread coin
         max_long_rate, self.max_dex_long = highest_rates[self.max_coin]['Highest Long Rate']
         max_short_rate, self.max_dex_short = highest_rates[self.max_coin]['Highest Short Rate']
-        
+
+        # Output the results
         print('#### Highest Spread ####')
         print(self.max_coin)
         print(f'Highest Long Rate: {max_long_rate:.12f} from {self.max_dex_long}')
@@ -173,13 +197,13 @@ class TradingBot:
         hyper_size = get_quantity(leverage=self.leverage,price=hyper_liquid_mark_price,balance=hyper_balance)
         
         aevo_balance = float(self.aevo_account['collaterals'][0]['available_balance'])
-        aevo_market_data = asyncio.run(self.aevo_client.get_markets(asset=self.max_coin,instrument='PERPETUAL'))
+        aevo_market_data = await self.aevo_client.get_markets(asset=self.max_coin,instrument='PERPETUAL')
         aevo_current_mark_price = float(aevo_market_data[0]['mark_price'])
         aevo_size = get_quantity(leverage=self.leverage,price=aevo_current_mark_price,balance=aevo_balance)
         
         if self.max_dex_long == 'AEVO':
             print(f'long_aevo with {self.max_coin}')
-            asyncio.run(self.aevo_client.create_order(instrument_id=1,is_buy=True,reduce_only=False,quantity=aevo_size))
+            await self.aevo_client.create_order(instrument_id=1,is_buy=True,reduce_only=False,quantity=aevo_size)
             print(f'short hyper with {self.max_coin}')
             self.hyper_client.place_order(coin=self.max_coin,size=hyper_size,is_buy=False)
 
@@ -187,12 +211,13 @@ class TradingBot:
             print(f'long hyper with {self.max_coin}')
             self.hyper_client.place_order(coin=self.max_coin,size=hyper_size,is_buy=True)
             print(f'short aevo with {self.max_coin}')
-            asyncio.run(self.aevo_client.create_order(instrument_id=1,is_buy=False,reduce_only=False,quantity=aevo_size))
+            await self.aevo_client.create_order(instrument_id=1,is_buy=False,reduce_only=False,quantity=aevo_size)
      
 
     async def stop(self):
         await self.hyper_ws.stop()
         await self.aevo_ws.stop()
+        self.ws_started = False
 
 
 if __name__ == '__main__':

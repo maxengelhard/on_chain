@@ -7,25 +7,25 @@ from eth_account_client import EthAccountClient
 from trading_utils import amount_to_withdraw
 
 
-def rebalance(hyper_client,aevo_client,hyper_account,aevo_account):
+async def rebalance(hyper_client,aevo_client,hyper_account,aevo_account):
     eth_account_client = EthAccountClient()
     print('need to rebalance')
     # closed out
     # get account values for each
-    aevo_balance = float(hyper_account['balance'])
-    hyper_balance = float(aevo_account['withdrawable'])
+    aevo_balance = float(aevo_account['balance'])
+    hyper_balance = float(hyper_account['withdrawable'])
 
     # get the difference from both
     difference = hyper_balance - aevo_balance
 
     account_balance = 0
-    if difference > 0:
+    if difference > 1:
         # withdraw from hyper and deposit to aevo
         withdraw_amount = amount_to_withdraw(higher_value=hyper_balance,lower_value=aevo_balance) + 1 # for fee
         # withdraw this amount from hyper
         # with withdraw usdc
         print('withdrawing hyper')
-        hyper_client.hyper_withdraw(amount=withdraw_amount)
+        hyper_client.withdraw(amount=withdraw_amount)
         while account_balance ==0:
             account_balance = eth_account_client.get_usdc_balance(is_usdc=True)
             print(f'checking account balance {account_balance}')
@@ -39,15 +39,15 @@ def rebalance(hyper_client,aevo_client,hyper_account,aevo_account):
         new_account_balance = eth_account_client.get_usdc_balance(is_usdc=False)
         ### now that we have usdc.e deposit into aevo
         print(f'depositing {new_account_balance} into aevo')
-        asyncio.run(aevo_client.deposit(amount=new_account_balance))
+        await aevo_client.deposit(amount=new_account_balance)
 
 
-    elif difference < 0:
+    elif difference < -1:
         # withdraw from aevo and deposit to hyper
         withdraw_amount = amount_to_withdraw(higher_value=aevo_balance,lower_value=hyper_balance)
         # withdraw this amount from aevo
         print('withdrawing from aevo')
-        asyncio.run(aevo_client.withdraw(amount=withdraw_amount))
+        await aevo_client.withdraw(amount=withdraw_amount)
         # will withdraw usdc.e
         while account_balance == 0:
             account_balance = eth_account_client.get_usdc_balance(is_usdc=False)
