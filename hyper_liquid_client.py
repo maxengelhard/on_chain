@@ -25,12 +25,12 @@ class HyperLiquidClient:
         self.USDCE_CONTRACT_ADDRESS = Web3.to_checksum_address(os.environ.get('usdce_contract'))
         self.NODE_URL = os.environ.get('rpc_end_point')
         self.HYPER_ADDRESS = Web3.to_checksum_address(os.environ.get('hyper_liquid_address'))
+        self.TAKER_FEE = 0.00035
+        self.MAKER_FEE = 0.0001
         
         self.info = Info(self.BASE_URL, skip_ws=True)
         self.exchange = Exchange(self.ACCOUNT, self.BASE_URL, account_address=self.ADDRESS)
         
-
-
     def get_account(self) -> None:
         user_info = self.info.user_state(address=self.ADDRESS)
         return user_info
@@ -51,7 +51,7 @@ class HyperLiquidClient:
             
             coin = universe[idx]['name']
             market_data = funding[idx]
-            if coin in coins:
+            if coin in coins or coin.replace('k','') in coins:
                 result[coin] = market_data
 
         return result
@@ -134,12 +134,10 @@ class HyperLiquidClient:
         # Print the transaction hash
         print(f'Transaction hash: {tx_hash.hex()}')
 
-
 if __name__ == '__main__':
     # hyper_order(coin='ETH',size=0.01,is_buy=True)
     # hyper_withdraw(amount=1.5)
     client = HyperLiquidClient()
-    account_info = client.get_account()
-    print(account_info)
+
 
 

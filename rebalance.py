@@ -60,5 +60,3 @@ async def rebalance(hyper_client,aevo_client,hyper_account,aevo_account):
         new_account_balance = eth_account_client.get_usdc_balance(is_usdc=True)
         print(f'depositing {new_account_balance} into hyper')
         hyper_client.deposit(amount=new_account_balance)
-
-    return True

@@ -28,6 +28,8 @@ class AevoClient:
         self.CONNECTOR_ADDRESS = "0x73019b64e31e699fFd27d54E91D686313C14191C"  # socket connector
         self.CHAIN_ID = 42161  # Arbitrum Mainnet chain id
         self.NODE_URL = os.environ.get('rpc_end_point')
+        self.TAKER_FEE = 0.0008
+        self.MAKER_FEE = 0.0005
 
         self.aevo_client = AevoLibClient(
             signing_key=self.SIGNING_KEY,

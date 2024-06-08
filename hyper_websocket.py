@@ -10,12 +10,13 @@ class HyperLiquidWebSocket:
         self.base_uri = "wss://api-ui.hyperliquid.xyz/ws"
         self.websocket = None
 
-    async def start(self,coin):
-        async with websockets.connect(self.base_uri) as websocket:
-            self.websocket = websocket
-            await self.subscribe(coin=coin)
-            logger.info("AEVO WebSocket connection opened.")
-            await self.handle_update()
+    async def start(self,coins):
+        for coin in coins:
+            async with websockets.connect(self.base_uri) as websocket:
+                self.websocket = websocket
+                await self.subscribe(coin=coin)
+                logger.info("AEVO WebSocket connection opened.")
+                await self.handle_update()
             
 
     async def subscribe(self,coin):

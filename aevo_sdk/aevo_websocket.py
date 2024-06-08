@@ -29,21 +29,23 @@ class AevoWebSocket:
             env="mainnet",
         )
 
-    async def start(self,coin):
+    async def start(self,coins):
         await self.aevo_client.open_connection()
         logger.info("AEVO WebSocket connection opened.")
-        await self.handle_update(coin=coin)
+        await self.handle_update(coins=coins)
 
-    async def handle_update(self,coin):
+    async def handle_update(self,coins):
         logger.info("Creating subscription for mark price...")
         # await self.aevo_client.subscribe_markprice(asset=coin, type='PERPETUAL')
-        await self.aevo_client.subscribe_tickers(asset=coin,type='PERPETUAL')
+        for coin in coins:
+            coin = coin.replace('k','1000')
+            await self.aevo_client.subscribe_tickers(asset=coin,type='PERPETUAL')
 
-        async for msg in self.aevo_client.read_messages():
-            # logger.info(f"Received message: {msg}")
-            try: msg=json.loads(msg)
-            except: continue
-            await self.message_callback(msg)
+            async for msg in self.aevo_client.read_messages():
+                # logger.info(f"Received message: {msg}")
+                try: msg=json.loads(msg)
+                except: continue
+                await self.message_callback(msg)
 
     async def stop(self):
         if self.aevo_client:
