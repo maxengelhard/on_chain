@@ -50,11 +50,15 @@ class AevoClient:
         )
         logger.info(response)
 
-        # place tp
-        take_response = self.place_tp(instrument_id=instrument_id,is_buy=is_buy,quantity=quantity,price=price)
-        # place sl
-        stop_response = self.place_sl(instrument_id=instrument_id,is_buy=is_buy,quantity=quantity,price=price)
-        return response,take_response,stop_response
+        if not reduce_only:
+            # place tp
+            take_response = self.place_tp(instrument_id=instrument_id,is_buy=is_buy,quantity=quantity,price=price)
+            # place sl
+            stop_response = self.place_sl(instrument_id=instrument_id,is_buy=is_buy,quantity=quantity,price=price)
+            return response,take_response,stop_response
+        elif reduce_only:
+            # TODO cancel tpsl
+            return
     
     def place_tp(self,instrument_id,is_buy,quantity,price):
         logger.info("Creating tp order...")

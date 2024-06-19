@@ -19,7 +19,6 @@ class TradingBot:
     def __init__(self):
         self.hyper_client = HyperLiquidClient() 
         self.aevo_client = AevoClient()
-        self.threshold = 0.02
         self.hyper_ws = HyperLiquidWebSocket(message_callback=self.process_hyper_message)
         self.aevo_ws = AevoWebSocket(message_callback=self.process_aevo_message)
         self.ws_started = False
@@ -27,10 +26,12 @@ class TradingBot:
         self.leverage = 20
         self.position_coin = None
         self.has_position = None
-        self.hyper_account = {}
-        self.aevo_account = {}
+        self.hyper_account = None
+        self.hyper_position = None
+        self.aevo_account = None
+        self.aevo_position = None
         self.fundings = {}
-        self.df = pd.DataFrame(columns=['coin', 'hyper_funding_rate', 'aevo_funding_rate', 'funding_rate_spread', 'hyper_price', 'aevo_price', 'pnl', 'hours_needed','instrument_id','buyer'])
+        self.df = pd.DataFrame(columns=['coin', 'hyper_funding_rate', 'aevo_funding_rate', 'funding_rate_spread', 'hyper_price', 'aevo_price', 'pnl', 'hours_needed','instrument_id','buyer','open_position','hyper_side','aevo_side'])
 
     async def start(self):
         await self.get_accounts()
@@ -46,7 +47,7 @@ class TradingBot:
 
         if 'assetPositions' in self.hyper_account and self.hyper_account['assetPositions']:
             self.hyper_position = self.hyper_account['assetPositions'][0]['position']
-            self.position_coin = self.hyper_position['coin']
+            self.position_coin = ['coin']
             self.hyper_side = 1 if float(self.hyper_position['szi']) < 0 else -1
         else:
             self.hyper_position = None
@@ -131,7 +132,10 @@ class TradingBot:
                 'pnl': total_pnl,
                 'hours_needed': hours_needed,
                 'instrument_id' : instrument_id, 
-                'buyer': 'AEVO' if hyper_funding_rate > aevo_funding_rate else 'HYPER_LIQUID'
+                'buyer': 'AEVO' if hyper_funding_rate > aevo_funding_rate else 'HYPER_LIQUID',
+                'open_position': coin == self.position_coin,
+                'hyper_side' : self.hyper_side,
+                'aevo_side' : self.aevo_side,
             }
 
             self.update_dataframe(result)
@@ -196,58 +200,6 @@ class TradingBot:
 
         # self.funding_rates()
         # self.open_positions() 
-
-    # def funding_rates(self):
-    #     self.hyper_funding = self.hyper_client.get_funding(coins=self.coins)
-    #     self.aevo_funding = self.aevo_client.get_funding(coins=self.coins)
-    #     highest_rates = {
-    #         coin: {
-    #             'Highest Long Rate': (-float('inf'), None),
-    #             'Highest Short Rate': (-float('inf'), None)
-    #         }
-    #         for coin in self.coins
-    #     }
-    #     for coin in self.coins:
-    #         aevo_coin = float(self.aevo_funding[coin]) * 100
-    #         hyper_coin = float(self.hyper_funding[coin]['funding'])*100  # Assuming 'funding' is meant to be 'furniture'
-
-    #         data_sources = {
-    #             'AEVO': {'long_rate': -aevo_coin, 'short_rate': aevo_coin},
-    #             'HYPER_LIQUID': {'long_rate': -hyper_coin, 'short_rate': hyper_coin}
-    #         }
-
-    #         for source, rates in data_sources.items():
-    #             long_rate = rates['long_rate'] * 8760
-    #             short_rate = rates['short_rate'] * 8760
-
-    #             if long_rate > highest_rates[coin]['Highest Long Rate'][0]:
-    #                 highest_rates[coin]['Highest Long Rate'] = (long_rate, source)
-
-    #             if short_rate > highest_rates[coin]['Highest Short Rate'][0]:
-    #                 highest_rates[coin]['Highest Short Rate'] = (short_rate, source)
-
-    #     # Calculate the maximum spread correctly
-    #     max_spread = max(
-    #         (abs(rates['Highest Long Rate'][0] + rates['Highest Short Rate'][0]) for rates in highest_rates.values()),
-    #         default=0
-    #     )
-
-    #     # Find the coin with the maximum spread
-    #     self.max_coin = max(
-    #         (coin for coin, rates in highest_rates.items() if abs(rates['Highest Long Rate'][0] + rates['Highest Short Rate'][0]) == max_spread),
-    #         default=None
-    #     )
-
-    #     # Extract the details for the maximum spread coin
-    #     max_long_rate, self.max_dex_long = highest_rates[self.max_coin]['Highest Long Rate']
-    #     max_short_rate, self.max_dex_short = highest_rates[self.max_coin]['Highest Short Rate']
-
-    #     # Output the results
-    #     print('#### Highest Spread ####')
-    #     print(self.max_coin)
-    #     print(f'Highest Long Rate: {max_long_rate:.12f} from {self.max_dex_long}')
-    #     print(f'Highest Short Rate: {max_short_rate:.12f} from {self.max_dex_short}')
-    #     print(f'Spread: {max_spread:.12f}')
 
     def open_positions(self,row):
         coin = row['coin']
