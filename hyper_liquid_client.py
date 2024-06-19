@@ -57,10 +57,27 @@ class HyperLiquidClient:
         return result
 
 
-    def place_order(self,coin:str,size:float,is_buy:bool):
-        # Place an order that should rest by setting the price very low
+    def place_order(self,coin:str,size:float,is_buy:bool,price):
+        # Place market order
         order_result = self.exchange.market_open(coin=coin, is_buy=is_buy, sz=size)
-        return order_result
+        # place sl
+        stop_result = self.place_sl(coin=coin,size=size,is_buy=is_buy,price=price)
+        # place tp
+        take_result = self.place_tp(coin=coin,size=size,is_buy=is_buy,price=price) 
+        
+        return order_result,stop_result,take_result
+    
+    def place_sl(self,coin:str,size:float,is_buy:bool,price:float):
+        trigger_price = price*(.97) if is_buy else price*(1.03)
+        stop_order_type = {"trigger": {"triggerPx": trigger_price, "isMarket": True, "tpsl": "sl"}}
+        stop_result = self.exchange.order(coin=coin, is_buy=not is_buy, sz=size, limit_px=trigger_price, order_type=stop_order_type, reduce_only=True)
+        return stop_result
+
+    def place_tp(self,coin:str,size:float,is_buy:bool,price:float):
+        trigger_price = price*(.97) if not is_buy else price*(1.03)
+        tp_order_type = {"trigger": {"triggerPx": trigger_price, "isMarket": True, "tpsl": "tp"}}
+        take_result = self.exchange.order(coin=coin, is_buy=not is_buy, sz=size, limit_px=trigger_price, order_type=tp_order_type, reduce_only=True)
+        return take_result
 
     def close_position(self,coin:str):
         order_result = self.exchange.market_close(coin)

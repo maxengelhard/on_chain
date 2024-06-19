@@ -39,8 +39,9 @@ class AevoClient:
             env="mainnet",
         )
 
-    async def create_order(self,instrument_id,is_buy,reduce_only,quantity):
+    def place_order(self,instrument_id,is_buy,reduce_only,quantity,price):
         logger.info("Creating order...")
+        # place market order
         response = self.aevo_client.rest_create_market_order(
             instrument_id=instrument_id,
             is_buy=is_buy,
@@ -48,7 +49,50 @@ class AevoClient:
             reduce_only=reduce_only,
         )
         logger.info(response)
-        return response
+
+        # place tp
+        take_response = self.place_tp(instrument_id=instrument_id,is_buy=is_buy,quantity=quantity,price=price)
+        # place sl
+        stop_response = self.place_sl(instrument_id=instrument_id,is_buy=is_buy,quantity=quantity,price=price)
+        return response,take_response,stop_response
+    
+    def place_tp(self,instrument_id,is_buy,quantity,price):
+        logger.info("Creating tp order...")
+        limit_price = 0
+        if is_buy:
+            limit_price = 2**256 - 1
+        trigger_price = price*(.97) if not is_buy else price*(1.03)
+        take_response = self.aevo_client.rest_create_order(
+                instrument_id=instrument_id,
+                is_buy=not is_buy,
+                limit_price=limit_price,
+                quantity=quantity,
+                close_position=True,
+                stop='TAKE_PROFIT',
+                trigger=trigger_price
+            )
+        logger.info(take_response)
+        return take_response 
+
+
+    def place_sl(self,instrument_id,is_buy,quantity,price):
+        logger.info("Creating sl order...") 
+        limit_price = 0
+        if is_buy:
+            limit_price = 2**256 - 1
+        trigger_price = price*(.97) if is_buy else price*(1.03)
+        stop_response = self.aevo_client.rest_create_order(
+                instrument_id=instrument_id,
+                is_buy=not is_buy,
+                limit_price=limit_price,
+                quantity=quantity,
+                close_position=True,
+                stop='STOP_LOSS',
+                trigger=trigger_price
+            )
+        logger.info(stop_response)
+        return stop_response
+
 
     async def get_account(self) -> None:
         logger.info("Getting AEVO portfolio...")

@@ -208,10 +208,10 @@ class AevoLibClient:
 
     # Private REST API
     def rest_create_order(
-        self, instrument_id, is_buy, limit_price, quantity, post_only=True
+        self, instrument_id, is_buy, limit_price, quantity, post_only=True,close_position=None,stop=None,trigger=None
     ):
         data, order_id = self.create_order_rest_json(
-            int(instrument_id), is_buy, limit_price, quantity, post_only
+            instrument_id=int(instrument_id), is_buy=is_buy, limit_price=limit_price, quantity=quantity, post_only=post_only,close_position=close_position,stop=stop,trigger=trigger
         )
         logger.info(data)
         req = self.client.post(
