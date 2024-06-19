@@ -139,7 +139,7 @@ class TradingBot:
             }
 
             self.update_dataframe(result)
-            self.check_enter()
+            self.check_enter_or_exit()
 
     def update_dataframe(self, result):
         # Ensure the result does not contain empty or all-NA entries
@@ -152,19 +152,26 @@ class TradingBot:
                 new_row = pd.DataFrame([result])
                 self.df = pd.concat([self.df, new_row], ignore_index=True)
     
-    def check_enter(self):
+    def check_enter_or_exit(self):
         # Find and print the row with the maximum PNL
         if not self.df.empty:
-            max_pnl_row = self.df.loc[self.df['hours_needed'].idxmin()]
-            if max_pnl_row['pnl'] > 0:
-                print("\nRow with the best hours needed:")
-                print(max_pnl_row)
-                if not self.has_position:
+            if not self.has_position:
+                max_pnl_row = self.df.loc[self.df['hours_needed'].idxmin()]
+                if max_pnl_row['pnl'] > 0:
+                    print("\nRow with the best hours needed:")
+                    print(max_pnl_row)
                     self.open_positions(row=max_pnl_row)
                     self.has_position = True
-
-            else:
-                print(self.df)
+                else:
+                    print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','pnl','hours_needed','buyer','hyper_side','aevo_side']])
+            elif self.has_position:
+                # check to see the position coin
+                open_position_rows = self.df[self.df['open_position'] == True]
+                for _, row in open_position_rows.iterrows():
+                    who_bought = 'HYPER_LIQUID' if row['hyper_side'] == -1 else 'AEVO'
+                    buyer = row['buyer']
+                    if (buyer != who_bought):
+                        self.close_rebalance_start()
 
     async def check_negative_funding_rates(self):
         if self.hyper_funding_rate and self.aevo_funding_rate:
