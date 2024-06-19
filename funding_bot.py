@@ -73,7 +73,7 @@ class TradingBot:
         self.fundings[coin] = self.fundings.get(coin, {})
         self.fundings[coin]['hyper_mark_price'] = mark_price
         self.fundings[coin]['hyper_funding_rate'] = funding_rate
-        self.check_profitability(coin)
+        await self.check_profitability(coin)
         # await self.check_liquidation(mark_price=mark_price,platform='hyper')
         # self.hyper_funding_rate = float(ctx['funding']) * self.hyper_side
         # await self.check_negative_funding_rates()
@@ -95,12 +95,12 @@ class TradingBot:
         self.fundings[coin]['aevo_mark_price'] = mark_price
         self.fundings[coin]['aevo_funding_rate'] = funding_rate
         self.fundings[coin]['instrument_id'] = instrument_id
-        self.check_profitability(coin)
+        await self.check_profitability(coin)
         # await self.check_liquidation(mark_price=mark_price,platform='aevo')
         # self.aevo_funding_rate = float(ticker['funding_rate']) * self.aevo_side
         # await self.check_negative_funding_rates()
 
-    def check_profitability(self, coin):
+    async def check_profitability(self, coin):
         pos = self.fundings.get(coin, {})
         if 'hyper_mark_price' in pos and 'hyper_funding_rate' in pos and 'aevo_mark_price' in pos and 'aevo_funding_rate' in pos:
             hyper_fees = self.hyper_client.TAKER_FEE
@@ -139,7 +139,7 @@ class TradingBot:
             }
 
             self.update_dataframe(result)
-            self.check_enter_or_exit()
+            await self.check_enter_or_exit()
 
     def update_dataframe(self, result):
         # Ensure the result does not contain empty or all-NA entries
@@ -152,7 +152,7 @@ class TradingBot:
                 new_row = pd.DataFrame([result])
                 self.df = pd.concat([self.df, new_row], ignore_index=True)
     
-    def check_enter_or_exit(self):
+    async def check_enter_or_exit(self):
         # Find and print the row with the maximum PNL
         if not self.df.empty:
             if not self.has_position:
@@ -161,7 +161,7 @@ class TradingBot:
                     print("\nRow with the best hours needed:")
                     print(max_pnl_row)
                     self.has_position = True
-                    self.open_positions(row=max_pnl_row)
+                    await self.open_positions(row=max_pnl_row)
                 elif not self.has_position:
                     print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','pnl','hours_needed','buyer','hyper_side','aevo_side']])
             elif self.has_position:
@@ -172,7 +172,7 @@ class TradingBot:
                     who_bought = 'HYPER_LIQUID' if row['hyper_side'] == -1 else 'AEVO'
                     buyer = row['buyer']
                     if (buyer != who_bought):
-                        self.close_rebalance_start()
+                        await self.close_rebalance_start()
 
     async def check_negative_funding_rates(self):
         if self.hyper_funding_rate and self.aevo_funding_rate:
@@ -209,7 +209,8 @@ class TradingBot:
         # self.funding_rates()
         # self.open_positions() 
 
-    def open_positions(self,row):
+    async def open_positions(self,row):
+        await self.stop()
         coin = row['coin']
         buyer = row['buyer']
         instrument_id = row['instrument_id']
@@ -234,7 +235,9 @@ class TradingBot:
             self.hyper_client.place_order(coin=coin,size=size,is_buy=True,price=hyper_liquid_mark_price)
             print(f'short aevo with {coin}')
             self.aevo_client.place_order(instrument_id=instrument_id,is_buy=False,reduce_only=False,quantity=size,price=aevo_mark_price)
-     
+
+        
+        await self.start()
 
     async def stop(self):
         await self.hyper_ws.stop()
