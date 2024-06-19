@@ -11,6 +11,9 @@ def amount_to_withdraw(higher_value:float,lower_value:float) -> None:
     mid_point = float((higher_value + lower_value)/2)
     return higher_value - mid_point
 
-def get_quantity(leverage:int,price:float,balance:float):
+def get_quantity(leverage:int,price:float,balance:float,coin:str):
     size = balance / (price / leverage)
-    return math.floor(size*100) / 100  # Round to 2 decimal places
+    if coin == 'DOGE':
+        return math.floor(size)  # Floor to the nearest integer for DOGE
+    else:
+        return math.floor(size * 100) / 100  # Round to 2 decimal places for other coins

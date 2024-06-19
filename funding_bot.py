@@ -160,13 +160,14 @@ class TradingBot:
                 if max_pnl_row['pnl'] > 0:
                     print("\nRow with the best hours needed:")
                     print(max_pnl_row)
-                    self.open_positions(row=max_pnl_row)
                     self.has_position = True
-                else:
+                    self.open_positions(row=max_pnl_row)
+                elif not self.has_position:
                     print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','pnl','hours_needed','buyer','hyper_side','aevo_side']])
             elif self.has_position:
                 # check to see the position coin
                 open_position_rows = self.df[self.df['open_position'] == True]
+                # print(open_position_rows)
                 for _, row in open_position_rows.iterrows():
                     who_bought = 'HYPER_LIQUID' if row['hyper_side'] == -1 else 'AEVO'
                     buyer = row['buyer']
@@ -214,26 +215,25 @@ class TradingBot:
         instrument_id = row['instrument_id']
         hyper_balance = float(self.hyper_account['withdrawable'])
         hyper_liquid_mark_price = row['hyper_price'] 
-        hyper_size = get_quantity(leverage=self.leverage,price=hyper_liquid_mark_price,balance=hyper_balance)
+        hyper_size = get_quantity(leverage=self.leverage,price=hyper_liquid_mark_price,balance=hyper_balance,coin=coin)
         
         aevo_balance = float(self.aevo_account['collaterals'][0]['available_balance'])
         aevo_mark_price = row['aevo_price']
-        aevo_size = get_quantity(leverage=self.leverage,price=aevo_mark_price,balance=aevo_balance)
+        aevo_size = get_quantity(leverage=self.leverage,price=aevo_mark_price,balance=aevo_balance,coin=coin)
         
         size = min(hyper_size,aevo_size)
-        print(size)
 
-        # if buyer == 'AEVO':
-        #     print(f'long_aevo with {coin}')
-        #     self.aevo_client.place_order(instrument_id=instrument_id,is_buy=True,reduce_only=False,quantity=size,price=aevo_mark_price)
-        #     print(f'short hyper with {coin}')
-        #     self.hyper_client.place_order(coin=coin,size=size,is_buy=False,price=hyper_liquid_mark_price)
+        if buyer == 'AEVO':
+            print(f'long_aevo with {coin}')
+            self.aevo_client.place_order(instrument_id=instrument_id,is_buy=True,reduce_only=False,quantity=size,price=aevo_mark_price)
+            print(f'short hyper with {coin}')
+            self.hyper_client.place_order(coin=coin,size=size,is_buy=False,price=hyper_liquid_mark_price)
 
-        # elif buyer == 'HYPER_LIQUID':
-        #     print(f'long hyper with {coin}')
-        #     self.hyper_client.place_order(coin=coin,size=size,is_buy=True,price=hyper_liquid_mark_price)
-        #     print(f'short aevo with {coin}')
-        #     self.aevo_client.place_order(instrument_id=instrument_id,is_buy=False,reduce_only=False,quantity=size,price=aevo_mark_price)
+        elif buyer == 'HYPER_LIQUID':
+            print(f'long hyper with {coin}')
+            self.hyper_client.place_order(coin=coin,size=size,is_buy=True,price=hyper_liquid_mark_price)
+            print(f'short aevo with {coin}')
+            self.aevo_client.place_order(instrument_id=instrument_id,is_buy=False,reduce_only=False,quantity=size,price=aevo_mark_price)
      
 
     async def stop(self):
