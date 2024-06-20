@@ -12,6 +12,8 @@ from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
 
+from trading_utils import round_price
+
 from dotenv import load_dotenv
 
 class HyperLiquidClient:
@@ -57,31 +59,35 @@ class HyperLiquidClient:
         return result
 
 
-    def place_order(self,coin:str,size:float,is_buy:bool,price):
+    def place_order(self,coin:str,size:float,is_buy:bool):
         # Place market order
         order_result = self.exchange.market_open(coin=coin, is_buy=is_buy, sz=size)
+        avg_price = float(order_result['response']['data']['statuses'][0]['filled']['avgPx'])
         # place sl
-        stop_result = self.place_sl(coin=coin,size=size,is_buy=is_buy,price=price)
+        stop_result = self.place_sl(coin=coin,size=size,is_buy=is_buy,price=avg_price)
         # place tp
-        take_result = self.place_tp(coin=coin,size=size,is_buy=is_buy,price=price) 
+        take_result = self.place_tp(coin=coin,size=size,is_buy=is_buy,price=avg_price) 
         
         return order_result,stop_result,take_result
     
     def place_sl(self,coin:str,size:float,is_buy:bool,price:float):
         trigger_price = price*(.97) if is_buy else price*(1.03)
+        trigger_price = round_price(trigger_price,max_sig_figs=5, max_decimals=6)
+
         stop_order_type = {"trigger": {"triggerPx": trigger_price, "isMarket": True, "tpsl": "sl"}}
         stop_result = self.exchange.order(coin=coin, is_buy=not is_buy, sz=size, limit_px=trigger_price, order_type=stop_order_type, reduce_only=True)
         return stop_result
 
     def place_tp(self,coin:str,size:float,is_buy:bool,price:float):
         trigger_price = price*(.97) if not is_buy else price*(1.03)
+        trigger_price = round_price(trigger_price,max_sig_figs=5, max_decimals=6)
         tp_order_type = {"trigger": {"triggerPx": trigger_price, "isMarket": True, "tpsl": "tp"}}
         take_result = self.exchange.order(coin=coin, is_buy=not is_buy, sz=size, limit_px=trigger_price, order_type=tp_order_type, reduce_only=True)
         return take_result
 
     def close_position(self,coin:str):
         order_result = self.exchange.market_close(coin)
-        # close out tpsl's
+        # TODO close out tpsl's
         return order_result
 
     def withdraw(self,amount:float):
@@ -152,10 +158,15 @@ class HyperLiquidClient:
         # Print the transaction hash
         print(f'Transaction hash: {tx_hash.hex()}')
 
+
 if __name__ == '__main__':
     # hyper_order(coin='ETH',size=0.01,is_buy=True)
     # hyper_withdraw(amount=1.5)
     client = HyperLiquidClient()
+    order_result,stop_result,take_result = client.place_order(coin='ETH',size=0.01,is_buy=True,)
+    print(order_result)
+    print(stop_result)
+    print(take_result)
 
 
 

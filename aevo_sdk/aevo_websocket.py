@@ -76,6 +76,76 @@ class AevoWebSocket:
         await self.aevo_client.close_connection()
         logger.info("AEVO WebSocket connection closed.")
 
+    
+    async def place_order(self,instrument_id,is_buy,reduce_only,quantity,price):
+        logger.info("Creating order...")
+        limit_price = 0
+        if is_buy:
+            limit_price = 2**256 - 1
+        # place market order
+        response = self.aevo_client.create_order(
+            instrument_id=instrument_id,
+            is_buy=is_buy,
+            quantity=quantity,
+            reduce_only=reduce_only,
+            limit_price=limit_price
+        )
+        logger.info(response)
+
+        if not reduce_only:
+            parent_order_id = response['order_id']
+            # place tp
+            take_response = self.place_tp(instrument_id=instrument_id,is_buy=is_buy,quantity=quantity,price=price,parent_order_id=parent_order_id)
+            # place sl
+            stop_response = self.place_sl(instrument_id=instrument_id,is_buy=is_buy,quantity=quantity,price=price,parent_order_id=parent_order_id)
+            return response,take_response,stop_response
+        elif reduce_only:
+            # TODO cancel tpsl
+            return
+    
+    async def place_tp(self,instrument_id,is_buy,quantity,price,parent_order_id):
+        logger.info("Creating tp order...")
+        limit_price = 0
+        trigger_price = price*(.97) if not is_buy else price*(1.03)
+        trigger_price = int(trigger_price * (10**6))
+        if not is_buy:
+            limit_price = trigger_price * 21
+        take_response = self.aevo_client.rest_create_order(
+                instrument_id=instrument_id,
+                is_buy=not is_buy,
+                limit_price=limit_price,
+                quantity=0,
+                close_position=True,
+                reduce_only=True,
+                stop='TAKE_PROFIT',
+                trigger=trigger_price,
+                parent_order_id=parent_order_id
+            )
+        logger.info(take_response)
+        return take_response 
+
+
+    async def place_sl(self,instrument_id,is_buy,quantity,price,parent_order_id):
+        logger.info("Creating sl order...") 
+        limit_price = 0
+        trigger_price = price*(.97) if is_buy else price*(1.03)
+        trigger_price = int(trigger_price * (10**6))
+        if is_buy:
+            limit_price = trigger_price * 21
+        stop_response = self.aevo_client.rest_create_order(
+                instrument_id=instrument_id,
+                is_buy=not is_buy,
+                limit_price=limit_price,
+                quantity=0,
+                close_position=True,
+                reduce_only=True,
+                stop='STOP_LOSS',
+                trigger=trigger_price,
+                parent_order_id=parent_order_id,
+            )
+        logger.info(stop_response)
+        return stop_response
+
 async def process_aevo_message(msg):
     logger.info(f"Processed message: {msg}")
 

@@ -208,10 +208,10 @@ class AevoLibClient:
 
     # Private REST API
     def rest_create_order(
-        self, instrument_id, is_buy, limit_price, quantity, post_only=True,close_position=None,stop=None,trigger=None
+        self, instrument_id, is_buy, limit_price, quantity, post_only=True,close_position=None,stop=None,trigger=None,reduce_only=None,parent_order_id=None,time_in_force=None,
     ):
         data, order_id = self.create_order_rest_json(
-            instrument_id=int(instrument_id), is_buy=is_buy, limit_price=limit_price, quantity=quantity, post_only=post_only,close_position=close_position,stop=stop,trigger=trigger
+            instrument_id=int(instrument_id), is_buy=is_buy, limit_price=limit_price, quantity=quantity, post_only=post_only,close_position=close_position,stop=stop,trigger=trigger,reduce_only=reduce_only,parent_order_id=parent_order_id,time_in_force=time_in_force,
         )
         logger.info(data)
         req = self.client.post(
@@ -234,7 +234,7 @@ class AevoLibClient:
             quantity,
             price_decimals=1,
             post_only=False,
-            reduce_only=reduce_only
+            reduce_only=reduce_only,
         )
 
         req = self.client.post(
@@ -438,6 +438,8 @@ class AevoLibClient:
         amount_decimals=10**6,
         trigger=None,
         stop=None,
+        parent_order_id=None,
+        time_in_force='GTC',
     ):
         timestamp = int(time.time())
         salt, signature, order_id = self.sign_order(
@@ -460,10 +462,15 @@ class AevoLibClient:
             "reduce_only": reduce_only,
             "close_position": close_position,
             "timestamp": timestamp,
+            'time_in_force': time_in_force,
         }
         if trigger and stop:
-            payload["trigger"] = trigger
+            payload["trigger"] = str(trigger)
             payload["stop"] = stop
+            payload['partial_position'] = False
+
+        # if parent_order_id:
+        #     payload["parent_order_id"] = parent_order_id
 
         return payload, order_id
 

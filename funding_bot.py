@@ -5,9 +5,8 @@ from hyper_liquid_client import HyperLiquidClient
 ### rebalance ###
 from rebalance import rebalance
 ### utils ###
-from trading_utils import calculate_proximity_to_liquidation,get_quantity
+from trading_utils import get_quantity
 import pandas as pd
-from tabulate import tabulate
 import os
 
 ### websockets ###
@@ -32,6 +31,7 @@ class TradingBot:
         self.aevo_position = None
         self.fundings = {}
         self.df = pd.DataFrame(columns=['coin', 'hyper_funding_rate', 'aevo_funding_rate', 'funding_rate_spread', 'hyper_price', 'aevo_price', 'pnl', 'hours_needed','instrument_id','buyer','open_position','hyper_side','aevo_side'])
+        self.lock = asyncio.Lock()  # Initialize the lock
 
     async def start(self):
         await self.get_accounts()
@@ -153,26 +153,29 @@ class TradingBot:
                 self.df = pd.concat([self.df, new_row], ignore_index=True)
     
     async def check_enter_or_exit(self):
-        # Find and print the row with the maximum PNL
-        if not self.df.empty:
-            if not self.has_position:
-                max_pnl_row = self.df.loc[self.df['hours_needed'].idxmin()]
-                if max_pnl_row['pnl'] > 0:
-                    print("\nRow with the best hours needed:")
-                    print(max_pnl_row)
-                    self.has_position = True
-                    await self.open_positions(row=max_pnl_row)
-                elif not self.has_position:
-                    print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','pnl','hours_needed','buyer','hyper_side','aevo_side']])
-            elif self.has_position:
-                # check to see the position coin
-                open_position_rows = self.df[self.df['open_position'] == True]
-                # print(open_position_rows)
-                for _, row in open_position_rows.iterrows():
-                    who_bought = 'HYPER_LIQUID' if row['hyper_side'] == -1 else 'AEVO'
-                    buyer = row['buyer']
-                    if (buyer != who_bought):
-                        await self.close_rebalance_start()
+        # Ensure this section is not executed concurrently
+        async with self.lock:
+            if not self.df.empty:
+                # Find the row with the maximum PNL
+                if not self.has_position:
+                    max_pnl_row = self.df.loc[self.df['hours_needed'].idxmin()]
+                    if max_pnl_row['pnl'] > 0:
+                        print("\nRow with the best hours needed:")
+                        print(max_pnl_row)
+                        self.has_position = True
+                        await self.open_positions(row=max_pnl_row)
+                    elif not self.has_position:
+                        print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','pnl','hours_needed','buyer','hyper_side','aevo_side']])
+                # check to see if the funding rate has gone negative
+                elif self.has_position:
+                    # check to see the position coin
+                    open_position_rows = self.df[self.df['open_position'] == True]
+                    # print(open_position_rows)
+                    for _, row in open_position_rows.iterrows():
+                        who_bought = 'HYPER_LIQUID' if row['hyper_side'] == -1 else 'AEVO'
+                        buyer = row['buyer']
+                        if (buyer != who_bought):
+                            await self.close_rebalance_start()
 
     async def check_negative_funding_rates(self):
         if self.hyper_funding_rate and self.aevo_funding_rate:
@@ -208,9 +211,11 @@ class TradingBot:
 
         # self.funding_rates()
         # self.open_positions() 
+    
+    async def async_place_order(self,client, **kwargs):
+        return client.place_order(**kwargs)
 
     async def open_positions(self,row):
-        await self.stop()
         coin = row['coin']
         buyer = row['buyer']
         instrument_id = row['instrument_id']
@@ -223,27 +228,30 @@ class TradingBot:
         aevo_size = get_quantity(leverage=self.leverage,price=aevo_mark_price,balance=aevo_balance,coin=coin)
         
         size = min(hyper_size,aevo_size)
+        print(f'size {size}')
 
         if buyer == 'AEVO':
             print(f'long_aevo with {coin}')
-            self.aevo_client.place_order(instrument_id=instrument_id,is_buy=True,reduce_only=False,quantity=size,price=aevo_mark_price)
+            aevo_order = self.async_place_order(self.aevo_client,instrument_id=instrument_id,is_buy=True,reduce_only=False,quantity=size,)
             print(f'short hyper with {coin}')
-            self.hyper_client.place_order(coin=coin,size=size,is_buy=False,price=hyper_liquid_mark_price)
+            hyper_order = self.async_place_order(self.hyper_client,coin=coin,size=size,is_buy=False,price=hyper_liquid_mark_price)
 
         elif buyer == 'HYPER_LIQUID':
             print(f'long hyper with {coin}')
-            self.hyper_client.place_order(coin=coin,size=size,is_buy=True,price=hyper_liquid_mark_price)
+            hyper_order = self.async_place_order(self.hyper_client,coin=coin,size=size,is_buy=True,price=hyper_liquid_mark_price)
             print(f'short aevo with {coin}')
-            self.aevo_client.place_order(instrument_id=instrument_id,is_buy=False,reduce_only=False,quantity=size,price=aevo_mark_price)
+            aevo_order = self.async_place_order(self.aevo_client,instrument_id=instrument_id,is_buy=False,reduce_only=False,quantity=size,)
 
-        
+        # hit them currently
+        await asyncio.gather(hyper_order, aevo_order)
+
+        await self.stop()
         await self.start()
 
     async def stop(self):
         await self.hyper_ws.stop()
         await self.aevo_ws.stop()
         self.ws_started = False
-
 
 if __name__ == '__main__':
     bot = TradingBot()
