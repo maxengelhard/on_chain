@@ -2,12 +2,12 @@ import asyncio
 from decimal import *
 from aevo_sdk.aevo_client import AevoClient
 from hyper_liquid_client import HyperLiquidClient
+import pandas as pd
+from loguru import logger
 ### rebalance ###
 from rebalance import rebalance
 ### utils ###
 from trading_utils import get_quantity,calculate_proximity_to_liquidation
-import pandas as pd
-import os
 
 ### websockets ###
 from hyper_websocket import HyperLiquidWebSocket
@@ -183,13 +183,13 @@ class TradingBot:
         # Ensure this section is not executed concurrently
         async with self.lock:
             if not self.df.empty:
-                # print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','hyper_price','aevo_price']])
+                # print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','hyper_price','aevo_price','pnl','funding_rate_spread']])
                 # Find the row with the maximum PNL
                 if not self.has_position:
                     max_pnl_row = self.df.loc[self.df['hours_needed'].idxmin()]
                     if max_pnl_row['pnl'] > 0:
-                        print("\nRow with the best hours needed:")
-                        print(max_pnl_row)
+                        logger.info("\nRow with the best hours:")
+                        logger.info(max_pnl_row)
                         self.has_position = True
                         await self.open_positions(row=max_pnl_row)
                 # check to see if the funding rate has gone negative and check liquidation
@@ -218,7 +218,7 @@ class TradingBot:
                 liquidation_price = hyper_liquidation_price if platform == 'hyper' else aevo_liquidation_price
                 percent_to_liquidation = calculate_proximity_to_liquidation(mark_price=mark_price, liquidation_price=liquidation_price)
                 if abs(percent_to_liquidation) < self.threshold:
-                    print(f"Critical liquidation risk acting!")
+                    logger.info(f"Critical liquidation risk acting!")
                     await self.close_rebalance_start()
             
     async def close_rebalance_start(self):
@@ -258,7 +258,6 @@ class TradingBot:
         aevo_size = get_quantity(leverage=self.leverage,price=aevo_mark_price,balance=aevo_balance,coin=coin)
         
         size = min(hyper_size,aevo_size)
-        print(f'size {size}')
 
         hyper_order = self.async_place_order(self.hyper_client,coin=coin,size=size,is_buy=buyer == 'HYPER_LIQUID')
         aevo_order = self.async_place_order(self.aevo_client,instrument_id=instrument_id,is_buy=buyer == 'AEVO',reduce_only=False,quantity=size,)
