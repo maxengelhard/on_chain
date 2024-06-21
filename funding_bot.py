@@ -31,7 +31,7 @@ class TradingBot:
         self.aevo_account = None
         self.aevo_position = None
         self.fundings = {}
-        self.df = pd.DataFrame(columns=['coin', 'hyper_funding_rate', 'aevo_funding_rate', 'funding_rate_spread', 'hyper_price', 'aevo_price', 'pnl', 'hours_needed','instrument_id','buyer','open_position','hyper_side','aevo_side'])
+        self.df = pd.DataFrame(columns=['coin', 'hyper_funding_rate', 'aevo_funding_rate', 'funding_rate_spread', 'hyper_price', 'aevo_price', 'pnl', 'hours_needed','instrument_id','buyer','open_position','hyper_side','aevo_side','hyper_liquidation_px','aevo_liquidation_px'])
         self.lock = asyncio.Lock()  # Initialize the lock
 
     async def start(self):
@@ -65,17 +65,24 @@ class TradingBot:
             self.aevo_side = None
 
     async def process_hyper_message(self,msg):
-        data = msg.get('data',{}) 
-        ctx = data.get('ctx')
-        if not ctx: return
-        coin = data['coin']
-        mark_price = float(ctx['markPx'])
-        self.hyper_mark_price = mark_price
-        funding_rate = float(ctx['funding'])
-        self.fundings[coin] = self.fundings.get(coin, {})
-        self.fundings[coin]['hyper_mark_price'] = mark_price
-        self.fundings[coin]['hyper_funding_rate'] = funding_rate
-        await self.funding_bot_main(coin)
+        data = msg.get('data',{})
+        if msg.get('channel') == 'activeAssetsCtx':
+            ctx = data.get('ctx')
+            if not ctx: return
+            coin = data['coin']
+            mark_price = float(ctx['markPx'])
+            self.hyper_mark_price = mark_price
+            funding_rate = float(ctx['funding'])
+            self.fundings[coin] = self.fundings.get(coin, {})
+            self.fundings[coin]['hyper_mark_price'] = mark_price
+            self.fundings[coin]['hyper_funding_rate'] = funding_rate
+            await self.funding_bot_main(coin)
+        elif msg.get('channel') == 'webData2':
+            position = data['clearinghouseState']['assetPositions'][0]['postition']
+            coin = position['coin']
+            liquidation_price = position['liquidationPx']
+            self.fundings[coin]['hyper_liquidation_px'] = liquidation_price
+
 
 
     async def process_aevo_message(self,msg):

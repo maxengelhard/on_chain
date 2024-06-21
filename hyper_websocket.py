@@ -4,19 +4,25 @@ import json
 from loguru import logger
 from datetime import datetime, timedelta
 
+import os
+from dotenv import load_dotenv
+
 class HyperLiquidWebSocket:
     def __init__(self, message_callback) -> None:
+        load_dotenv()
+        self.ADDRESS = os.environ.get('address')
+        self.BASE_URI = "wss://api-ui.hyperliquid.xyz/ws"
         self.message_callback = message_callback
-        self.base_uri = "wss://api-ui.hyperliquid.xyz/ws"
         self.websockets = {}
         self.last_message_time = {}
 
     async def start(self, coins):
-        tasks = [self.connect_and_subscribe(coin) for coin in coins]
-        await asyncio.gather(*tasks)
+        coin_tasks = [self.connect_and_subscribe(coin) for coin in coins]
+        web2_task = self.connect_and_subscribe_web2()
+        await asyncio.gather(*coin_tasks,web2_task)
 
     async def connect_and_subscribe(self, coin):
-        async with websockets.connect(self.base_uri) as websocket:
+        async with websockets.connect(self.BASE_URI) as websocket:
             self.websockets[coin] = websocket
             self.last_message_time[coin] = datetime.now()
             await self.subscribe(websocket, coin)
@@ -33,6 +39,24 @@ class HyperLiquidWebSocket:
         }
         await websocket.send(json.dumps(subscribe_message))
         logger.info(f"Sent subscription for {coin}")
+
+    async def connect_and_subscribe_web2(self):
+        async with websockets.connect(self.base_uri) as websocket:
+            self.websockets['web2'] = websocket
+            await self.subscribe_web2(websocket)
+            logger.info(f"HyperLiquid WebSocket connection opened for web2 data.")
+            await self.handle_update(websocket)
+
+    async def subscribe_web2(self, websocket):
+        subscribe_message = {
+            "method": "subscribe",
+            "subscription": {
+                "type": "webData2",
+                "user": self.ADDRESS
+            }
+        }
+        await websocket.send(json.dumps(subscribe_message))
+        logger.info("Sent subscription for web2 data")
 
     async def handle_update(self, websocket,coin):
         try:
