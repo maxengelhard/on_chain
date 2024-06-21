@@ -23,7 +23,7 @@ class TradingBot:
         self.aevo_ws = AevoWebSocket(message_callback=self.process_aevo_message,coins=self.coins)
         self.ws_started = False
         self.leverage = 20
-        self.threshold = 0.02
+        self.threshold = 0.01
         self.position_coin = None
         self.has_position = None
         self.hyper_account = None
@@ -66,22 +66,27 @@ class TradingBot:
 
     async def process_hyper_message(self,msg):
         data = msg.get('data',{})
-        if msg.get('channel') == 'activeAssetsCtx':
+        if msg.get('channel') == 'activeAssetCtx':
             ctx = data.get('ctx')
             if not ctx: return
             coin = data['coin']
             mark_price = float(ctx['markPx'])
-            self.hyper_mark_price = mark_price
             funding_rate = float(ctx['funding'])
             self.fundings[coin] = self.fundings.get(coin, {})
             self.fundings[coin]['hyper_mark_price'] = mark_price
             self.fundings[coin]['hyper_funding_rate'] = funding_rate
             await self.funding_bot_main(coin)
         elif msg.get('channel') == 'webData2':
-            position = data['clearinghouseState']['assetPositions'][0]['postition']
-            coin = position['coin']
-            liquidation_price = position['liquidationPx']
-            self.fundings[coin]['hyper_liquidation_px'] = liquidation_price
+            try:
+                position = data['clearinghouseState']['assetPositions'][0].get('position')
+                if not position: return 
+                coin = position['coin']
+                self.fundings[coin] = self.fundings.get(coin, {})
+                liquidation_price = position['liquidationPx']
+                self.fundings[coin]['hyper_liquidation_px'] = liquidation_price
+                await self.funding_bot_main(coin)
+            except:
+                pass
 
 
 
@@ -90,8 +95,20 @@ class TradingBot:
         # for api funding rate hits
         if msg.get('type') == 'funding':
             for funding_coin , funding_rate in data.items():
+                self.fundings[funding_coin] = self.fundings.get(funding_coin, {})
                 self.fundings[funding_coin]['aevo_funding_rate'] = funding_rate
                 await self.funding_bot_main(funding_coin)
+        elif msg.get('channel') == 'positions':
+            try:
+                position = data['positions'][0]
+                if not position: return 
+                coin = position['asset']
+                self.fundings[coin] = self.fundings.get(coin, {})
+                liquidation_price = position['liquidation_price']
+                self.fundings[coin]['aevo_liquidation_px'] = liquidation_price
+                await self.funding_bot_main(coin)
+            except:
+                pass
         elif not isinstance(data,dict): return
         else:
             tickers = data.get('tickers',[])
@@ -100,7 +117,6 @@ class TradingBot:
             instrument_id = ticker['instrument_id']
             coin = ticker['instrument_name'].split('-')[0]
             mark_price = float(ticker['mark']['price'])
-            self.aevo_mark_price = mark_price
             self.fundings[coin] = self.fundings.get(coin, {})
             self.fundings[coin]['aevo_mark_price'] = mark_price
             self.fundings[coin]['instrument_id'] = instrument_id
@@ -145,6 +161,8 @@ class TradingBot:
                 'open_position': pos_coin_is_coin,
                 'hyper_side' : self.hyper_side if pos_coin_is_coin else None,
                 'aevo_side' : self.aevo_side if pos_coin_is_coin else None,
+                'hyper_liquidation_px' : pos.get('hyper_liquidation_px',None),
+                'aevo_liquidation_px' : pos.get('aevo_liquidation_px',None)
             }
 
             self.update_dataframe(result)
@@ -165,6 +183,7 @@ class TradingBot:
         # Ensure this section is not executed concurrently
         async with self.lock:
             if not self.df.empty:
+                print(self.df)
                 # print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','hyper_price','aevo_price']])
                 # Find the row with the maximum PNL
                 if not self.has_position:
@@ -199,7 +218,7 @@ class TradingBot:
                 mark_price = hyper_price if platform == 'hyper' else aevo_price
                 liquidation_price = hyper_liquidation_price if platform == 'hyper' else aevo_liquidation_price
                 percent_to_liquidation = calculate_proximity_to_liquidation(mark_price=mark_price, liquidation_price=liquidation_price)
-                print(f'checking liquidation on {platform}. Current %:{percent_to_liquidation}')
+                # print(f'checking liquidation on {platform}. Current %:{percent_to_liquidation}')
                 if abs(percent_to_liquidation) < self.threshold:
                     print(f"Critical liquidation risk acting!")
                     await self.close_rebalance_start()

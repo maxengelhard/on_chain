@@ -38,6 +38,7 @@ class AevoWebSocket:
     async def start(self, coins):
         await self.aevo_client.open_connection()
         logger.info("AEVO WebSocket connection opened.")
+        coins.append('pos')
         self.tasks = [asyncio.create_task(self.subscribe_and_handle_updates(coin)) for coin in coins]
         self.tasks.append(asyncio.create_task(self.read_messages()))
         self.tasks.append(asyncio.create_task(self.heartbeat()))
@@ -45,9 +46,13 @@ class AevoWebSocket:
         await asyncio.gather(*self.tasks)
 
     async def subscribe_and_handle_updates(self, coin):
-        coin = coin.replace('k', '1000')
-        await self.aevo_client.subscribe_tickers(asset=coin, type='PERPETUAL')
-        logger.info(f"Subscribed to {coin}")
+        if coin == 'pos':
+            await self.aevo_client.subscribe_postitions()
+            logger.info("subscribed to postitions")
+        else:
+            coin = coin.replace('k', '1000')
+            await self.aevo_client.subscribe_tickers(asset=coin, type='PERPETUAL')
+            logger.info(f"Subscribed to {coin}")
 
         while True:
             msg = await self.message_queue.get()
@@ -57,7 +62,7 @@ class AevoWebSocket:
             except json.JSONDecodeError:
                 continue
             await self.message_callback(msg)
-
+    
     async def read_messages(self):
         try:
             async for msg in self.aevo_client.read_messages():
@@ -88,6 +93,7 @@ class AevoWebSocket:
         result = {}
         async with aiohttp.ClientSession() as session:
             for coin in coins:
+                if coin == 'pos': continue
                 coin_name = coin
                 if coin[0] == 'k':
                     coin_name = coin.replace('k', '1000')

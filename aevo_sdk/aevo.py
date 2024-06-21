@@ -383,11 +383,14 @@ class AevoLibClient:
         }
         await self.send(json.dumps(payload))
 
-    async def subscribe_postiions(self):
+    async def subscribe_postitions(self):
         payload = {
             "op": "subscribe",
             "data": ["positions"],
         }
+
+        await self.send(json.dumps(payload))
+
 
     # Private WS Commands
     def create_order_ws_json(

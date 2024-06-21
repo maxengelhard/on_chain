@@ -41,11 +41,11 @@ class HyperLiquidWebSocket:
         logger.info(f"Sent subscription for {coin}")
 
     async def connect_and_subscribe_web2(self):
-        async with websockets.connect(self.base_uri) as websocket:
+        async with websockets.connect(self.BASE_URI) as websocket:
             self.websockets['web2'] = websocket
             await self.subscribe_web2(websocket)
             logger.info(f"HyperLiquid WebSocket connection opened for web2 data.")
-            await self.handle_update(websocket)
+            await self.handle_update(websocket,'User')
 
     async def subscribe_web2(self, websocket):
         subscribe_message = {
