@@ -158,7 +158,7 @@ class TradingBot:
         # Ensure this section is not executed concurrently
         async with self.lock:
             if not self.df.empty:
-                print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','hyper_price','aevo_price']])
+                # print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','hyper_price','aevo_price']])
                 # Find the row with the maximum PNL
                 if not self.has_position:
                     max_pnl_row = self.df.loc[self.df['hours_needed'].idxmin()]
@@ -167,37 +167,37 @@ class TradingBot:
                         print(max_pnl_row)
                         self.has_position = True
                         await self.open_positions(row=max_pnl_row)
-                    elif not self.has_position:
-                        print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','pnl','hours_needed','buyer','hyper_side','aevo_side']])
                 # check to see if the funding rate has gone negative and check liquidation
                 elif self.has_position:
-                    open_position_row = self.df[self.df['open_position'] == True]
-                    # await self.check_liquidation(open_position_row)
-                    await self.check_negative_funding_rate(open_position_row)
+                    open_position_rows = self.df[self.df['open_position'] == True]
+                    await self.check_liquidation(open_position_rows)
+                    await self.check_negative_funding_rate(open_position_rows)
                     
 
-    async def check_negative_funding_rate(self,open_position_row):
+    async def check_negative_funding_rate(self,open_position_rows):
         # check to see the position coin
-        for _, row in open_position_row.iterrows():
+        for _, row in open_position_rows.iterrows():
             who_bought = 'HYPER_LIQUID' if row['hyper_side'] == -1 else 'AEVO'
             buyer = row['buyer']
             if (buyer != who_bought):
-                print('closing out because of negative funding rate')
                 await self.close_rebalance_start()
 
-
-    # async def check_liquidation(self, mark_price, platform):
-    #     liquidation_price = None
-    #     if platform == 'hyper': liquidation_price = float(self.hyper_position['liquidationPx'])
-    #     elif platform == 'aevo': liquidation_price = float(self.aevo_position['liquidation_price'])
-    #     percent_to_liquidation = calculate_proximity_to_liquidation(mark_price=mark_price, liquidation_price=liquidation_price)
-    #     # print(f'checking liquidation on {platform}. Current %:{percent_to_liquidation}')
-    #     if abs(percent_to_liquidation) < self.threshold:
-    #         print(f"Critical liquidation risk on {platform}, acting!")
-    #         await self.close_rebalance_start()
+    async def check_liquidation(self, open_position_rows):
+        hyper_liquidation_price = float(self.hyper_position['liquidationPx'])
+        aevo_liquidation_price = float(self.aevo_position['liquidation_price'])
+        for _, row in open_position_rows.iterrows():
+            hyper_price = row['hyper_price']
+            aevo_price = row['aevo_price']
+            for platform in ('hyper','aevo'):
+                mark_price = hyper_price if platform == 'hyper' else aevo_price
+                liquidation_price = hyper_liquidation_price if platform == 'hyper' else aevo_liquidation_price
+                percent_to_liquidation = calculate_proximity_to_liquidation(mark_price=mark_price, liquidation_price=liquidation_price)
+                print(f'checking liquidation on {platform}. Current %:{percent_to_liquidation}')
+                if abs(percent_to_liquidation) < self.threshold:
+                    print(f"Critical liquidation risk acting!")
+                    await self.close_rebalance_start()
             
     async def close_rebalance_start(self):
-        await self.stop()
         instrument_id = self.aevo_position['instrument_id']
         aevo_opposite_side = False if self.aevo_position['side'] == 'buy' else True
         quantity = float(self.aevo_position['amount'])

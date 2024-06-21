@@ -92,7 +92,6 @@ class HyperLiquidClient:
 
     def close_position(self,coin:str):
         order_result = self.exchange.market_close(coin)
-        # TODO close out tpsl's
         return order_result
 
     def withdraw(self,amount:float):
