@@ -47,8 +47,9 @@ class TradingBot:
 
         if 'assetPositions' in self.hyper_account and self.hyper_account['assetPositions']:
             self.hyper_position = self.hyper_account['assetPositions'][0]['position']
-            self.position_coin = ['coin']
+            self.position_coin = self.hyper_position['coin']
             self.hyper_side = 1 if float(self.hyper_position['szi']) < 0 else -1
+            self.has_position = True
         else:
             self.hyper_position = None
             self.position_coin = None
@@ -57,6 +58,7 @@ class TradingBot:
         if 'positions' in self.aevo_account and self.aevo_account['positions']:
             self.aevo_position = self.aevo_account['positions'][0]
             self.aevo_side = -1 if self.hyper_position and float(self.hyper_position['szi']) < 0 else 1
+            self.has_position = True
         else:
             self.aevo_position = None
             self.aevo_side = None
@@ -122,6 +124,8 @@ class TradingBot:
             total_pnl = percent_pnl - hyper_fees - aevo_fees
             hours_needed = total_pnl * -1 / spread
 
+            pos_coin_is_coin = coin == self.position_coin
+
             result = {
                 'coin': coin,
                 'hyper_funding_rate': hyper_funding_rate,
@@ -133,9 +137,9 @@ class TradingBot:
                 'hours_needed': hours_needed,
                 'instrument_id' : instrument_id, 
                 'buyer': 'AEVO' if hyper_funding_rate > aevo_funding_rate else 'HYPER_LIQUID',
-                'open_position': coin == self.position_coin,
-                'hyper_side' : self.hyper_side,
-                'aevo_side' : self.aevo_side,
+                'open_position': pos_coin_is_coin,
+                'hyper_side' : self.hyper_side if pos_coin_is_coin else None,
+                'aevo_side' : self.aevo_side if pos_coin_is_coin else None,
             }
 
             self.update_dataframe(result)
@@ -170,11 +174,12 @@ class TradingBot:
                 elif self.has_position:
                     # check to see the position coin
                     open_position_rows = self.df[self.df['open_position'] == True]
-                    # print(open_position_rows)
+                    print(open_position_rows)
                     for _, row in open_position_rows.iterrows():
                         who_bought = 'HYPER_LIQUID' if row['hyper_side'] == -1 else 'AEVO'
                         buyer = row['buyer']
                         if (buyer != who_bought):
+                            print('closing out because of negative funding rate')
                             await self.close_rebalance_start()
 
     async def check_negative_funding_rates(self):
@@ -214,6 +219,9 @@ class TradingBot:
     
     async def async_place_order(self,client, **kwargs):
         return client.place_order(**kwargs)
+    
+    async def async_place_tpsl(self,client, **kwargs):
+        return client.place_tpsl(**kwargs)
 
     async def open_positions(self,row):
         coin = row['coin']
@@ -230,20 +238,27 @@ class TradingBot:
         size = min(hyper_size,aevo_size)
         print(f'size {size}')
 
-        if buyer == 'AEVO':
-            print(f'long_aevo with {coin}')
-            aevo_order = self.async_place_order(self.aevo_client,instrument_id=instrument_id,is_buy=True,reduce_only=False,quantity=size,)
-            print(f'short hyper with {coin}')
-            hyper_order = self.async_place_order(self.hyper_client,coin=coin,size=size,is_buy=False,price=hyper_liquid_mark_price)
-
-        elif buyer == 'HYPER_LIQUID':
-            print(f'long hyper with {coin}')
-            hyper_order = self.async_place_order(self.hyper_client,coin=coin,size=size,is_buy=True,price=hyper_liquid_mark_price)
-            print(f'short aevo with {coin}')
-            aevo_order = self.async_place_order(self.aevo_client,instrument_id=instrument_id,is_buy=False,reduce_only=False,quantity=size,)
-
+        hyper_order = self.async_place_order(self.hyper_client,coin=coin,size=size,is_buy=buyer == 'HYPER_LIQUID')
+        aevo_order = self.async_place_order(self.aevo_client,instrument_id=instrument_id,is_buy=buyer == 'AEVO',reduce_only=False,quantity=size,)
+        
         # hit them currently
-        await asyncio.gather(hyper_order, aevo_order)
+        hyper_result , aevo_result = await asyncio.gather(hyper_order, aevo_order)
+
+        # get avg prices for both
+        avg_hyper_price = float(hyper_result['response']['data']['statuses'][0]['filled']['avgPx'])
+        avg_aevo_price = float(aevo_result['avg_price'])
+
+        # then set up stop loss and take profit based on top and bottom
+        low_price = avg_hyper_price if avg_hyper_price < avg_aevo_price else avg_aevo_price
+        high_price = avg_hyper_price if avg_hyper_price > avg_aevo_price else avg_aevo_price
+
+        low_price = low_price*(1.03)
+        high_price = high_price*(.97)
+
+        hyper_tpsl = self.async_place_tpsl(self.hyper_client,coin=coin,size=size,is_buy=buyer == 'HYPER_LIQUID',low_price=low_price,high_price=high_price)
+        aevo_tpsl = self.async_place_tpsl(self.aevo_client,instrument_id=instrument_id,is_buy=buyer == 'AEVO',quantity=size,low_price=low_price,high_price=high_price)
+
+        hyper_tpsl_result , aevo_tpsl_result = await asyncio.gather(hyper_tpsl, aevo_tpsl)
 
         await self.stop()
         await self.start()

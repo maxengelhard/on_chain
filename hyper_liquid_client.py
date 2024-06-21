@@ -62,17 +62,22 @@ class HyperLiquidClient:
     def place_order(self,coin:str,size:float,is_buy:bool):
         # Place market order
         order_result = self.exchange.market_open(coin=coin, is_buy=is_buy, sz=size)
-        avg_price = float(order_result['response']['data']['statuses'][0]['filled']['avgPx'])
+        return order_result
+        
+    
+    def place_tpsl(self,coin:str,size:float,is_buy:bool,low_price:float,high_price:float):
+        take_price = high_price if is_buy else low_price
+        stop_price = low_price if is_buy else high_price
         # place sl
-        stop_result = self.place_sl(coin=coin,size=size,is_buy=is_buy,price=avg_price)
+        stop_result = self.place_sl(coin=coin,size=size,is_buy=is_buy,price=stop_price)
         # place tp
-        take_result = self.place_tp(coin=coin,size=size,is_buy=is_buy,price=avg_price) 
+        take_result = self.place_tp(coin=coin,size=size,is_buy=is_buy,price=take_price) 
         
         return order_result,stop_result,take_result
-    
+
+
     def place_sl(self,coin:str,size:float,is_buy:bool,price:float):
-        trigger_price = price*(.97) if is_buy else price*(1.03)
-        trigger_price = round_price(trigger_price,max_sig_figs=5, max_decimals=6)
+        trigger_price = round_price(price,max_sig_figs=5, max_decimals=6)
 
         stop_order_type = {"trigger": {"triggerPx": trigger_price, "isMarket": True, "tpsl": "sl"}}
         stop_result = self.exchange.order(coin=coin, is_buy=not is_buy, sz=size, limit_px=trigger_price, order_type=stop_order_type, reduce_only=True)

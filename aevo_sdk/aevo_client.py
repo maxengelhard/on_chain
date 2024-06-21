@@ -50,24 +50,24 @@ class AevoClient:
         )
         logger.info(response)
 
-        avg_price = float(response['avg_price'])
+        return response
 
-        if not reduce_only:
-            parent_order_id = response['order_id']
-            # place tp
-            take_response = self.place_tp(instrument_id=instrument_id,is_buy=is_buy,quantity=quantity,price=avg_price,parent_order_id=parent_order_id)
-            # place sl
-            stop_response = self.place_sl(instrument_id=instrument_id,is_buy=is_buy,quantity=quantity,price=avg_price,parent_order_id=parent_order_id)
-            return response,take_response,stop_response
-        elif reduce_only:
-            # TODO cancel tpsl
-            return
+
+    def place_tpsl(self,instrument_id,is_buy,quantity,high_price,low_price):
+        take_price = high_price if is_buy else low_price
+        stop_price = low_price if is_buy else high_price
+        # place tp
+        take_response = self.place_tp(instrument_id=instrument_id,is_buy=is_buy,quantity=quantity,price=take_price)
+        # place sl
+        stop_response = self.place_sl(instrument_id=instrument_id,is_buy=is_buy,quantity=quantity,price=stop_price)
+
+        return take_response, stop_response
+
     
-    def place_tp(self,instrument_id,is_buy,quantity,price,parent_order_id):
+    def place_tp(self,instrument_id,is_buy,price):
         logger.info("Creating tp order...")
         limit_price = 0
-        trigger_price = price*(.97) if not is_buy else price*(1.03)
-        trigger_price = int(trigger_price * (10**6))
+        trigger_price = int(price * (10**6))
         if not is_buy:
             limit_price = trigger_price * 21
         take_response = self.aevo_client.rest_create_order(
@@ -79,7 +79,6 @@ class AevoClient:
                 reduce_only=True,
                 stop='TAKE_PROFIT',
                 trigger=trigger_price,
-                parent_order_id=parent_order_id,
                 post_only=False,
                 time_in_force='IOC',
             )
@@ -87,11 +86,10 @@ class AevoClient:
         return take_response 
 
 
-    def place_sl(self,instrument_id,is_buy,quantity,price,parent_order_id):
+    def place_sl(self,instrument_id,is_buy,price):
         logger.info("Creating sl order...") 
         limit_price = 0
-        trigger_price = price*(.97) if is_buy else price*(1.03)
-        trigger_price = int(trigger_price * (10**6))
+        trigger_price = int(price * (10**6))
         if not is_buy:
             limit_price = trigger_price * 21
         stop_response = self.aevo_client.rest_create_order(
@@ -103,7 +101,6 @@ class AevoClient:
                 reduce_only=True,
                 stop='STOP_LOSS',
                 trigger=trigger_price,
-                parent_order_id=parent_order_id,
                 post_only=False,
                 time_in_force='IOC',
             )
