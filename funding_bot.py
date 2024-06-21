@@ -183,7 +183,6 @@ class TradingBot:
         # Ensure this section is not executed concurrently
         async with self.lock:
             if not self.df.empty:
-                print(self.df)
                 # print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','hyper_price','aevo_price']])
                 # Find the row with the maximum PNL
                 if not self.has_position:
@@ -209,16 +208,15 @@ class TradingBot:
                 await self.close_rebalance_start()
 
     async def check_liquidation(self, open_position_rows):
-        hyper_liquidation_price = float(self.hyper_position['liquidationPx'])
-        aevo_liquidation_price = float(self.aevo_position['liquidation_price'])
         for _, row in open_position_rows.iterrows():
             hyper_price = row['hyper_price']
             aevo_price = row['aevo_price']
+            hyper_liquidation_price = float(row['hyper_liquidation_px'])
+            aevo_liquidation_price = float(row['aevo_liquidation_px'])
             for platform in ('hyper','aevo'):
                 mark_price = hyper_price if platform == 'hyper' else aevo_price
                 liquidation_price = hyper_liquidation_price if platform == 'hyper' else aevo_liquidation_price
                 percent_to_liquidation = calculate_proximity_to_liquidation(mark_price=mark_price, liquidation_price=liquidation_price)
-                # print(f'checking liquidation on {platform}. Current %:{percent_to_liquidation}')
                 if abs(percent_to_liquidation) < self.threshold:
                     print(f"Critical liquidation risk acting!")
                     await self.close_rebalance_start()
