@@ -5,7 +5,7 @@ from hyper_liquid_client import HyperLiquidClient
 ### rebalance ###
 from rebalance import rebalance
 ### utils ###
-from trading_utils import get_quantity
+from trading_utils import get_quantity,calculate_proximity_to_liquidation
 import pandas as pd
 import os
 
@@ -23,6 +23,7 @@ class TradingBot:
         self.ws_started = False
         self.coins = ['ETH','BTC','SOL','DOGE']
         self.leverage = 20
+        self.threshold = 0.02
         self.position_coin = None
         self.has_position = None
         self.hyper_account = None
@@ -75,10 +76,8 @@ class TradingBot:
         self.fundings[coin] = self.fundings.get(coin, {})
         self.fundings[coin]['hyper_mark_price'] = mark_price
         self.fundings[coin]['hyper_funding_rate'] = funding_rate
-        await self.check_profitability(coin)
-        # await self.check_liquidation(mark_price=mark_price,platform='hyper')
-        # self.hyper_funding_rate = float(ctx['funding']) * self.hyper_side
-        # await self.check_negative_funding_rates()
+        await self.funding_bot_main(coin)
+
 
 
     async def process_aevo_message(self,msg):
@@ -97,12 +96,10 @@ class TradingBot:
         self.fundings[coin]['aevo_mark_price'] = mark_price
         self.fundings[coin]['aevo_funding_rate'] = funding_rate
         self.fundings[coin]['instrument_id'] = instrument_id
-        await self.check_profitability(coin)
-        # await self.check_liquidation(mark_price=mark_price,platform='aevo')
-        # self.aevo_funding_rate = float(ticker['funding_rate']) * self.aevo_side
-        # await self.check_negative_funding_rates()
+        await self.funding_bot_main(coin)
 
-    async def check_profitability(self, coin):
+
+    async def funding_bot_main(self, coin):
         pos = self.fundings.get(coin, {})
         if 'hyper_mark_price' in pos and 'hyper_funding_rate' in pos and 'aevo_mark_price' in pos and 'aevo_funding_rate' in pos:
             hyper_fees = self.hyper_client.TAKER_FEE
@@ -170,7 +167,7 @@ class TradingBot:
                         await self.open_positions(row=max_pnl_row)
                     elif not self.has_position:
                         print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','pnl','hours_needed','buyer','hyper_side','aevo_side']])
-                # check to see if the funding rate has gone negative
+                # check to see if the funding rate has gone negative and check liquidation
                 elif self.has_position:
                     # check to see the position coin
                     open_position_rows = self.df[self.df['open_position'] == True]
@@ -182,21 +179,15 @@ class TradingBot:
                             print('closing out because of negative funding rate')
                             await self.close_rebalance_start()
 
-    async def check_negative_funding_rates(self):
-        if self.hyper_funding_rate and self.aevo_funding_rate:
-            total_funding_rate = self.hyper_funding_rate + self.aevo_funding_rate
-            if total_funding_rate < 0:
-                await self.close_rebalance_start()
-
-    # async def check_liquidation(self, mark_price, platform):
-    #     liquidation_price = None
-    #     if platform == 'hyper': liquidation_price = float(self.hyper_position['liquidationPx'])
-    #     elif platform == 'aevo': liquidation_price = float(self.aevo_position['liquidation_price'])
-    #     percent_to_liquidation = calculate_proximity_to_liquidation(mark_price=mark_price, liquidation_price=liquidation_price)
-    #     # print(f'checking liquidation on {platform}. Current %:{percent_to_liquidation}')
-    #     if abs(percent_to_liquidation) < self.threshold:
-    #         print(f"Critical liquidation risk on {platform}, acting!")
-    #         await self.close_rebalance_start()
+    async def check_liquidation(self, mark_price, platform):
+        liquidation_price = None
+        if platform == 'hyper': liquidation_price = float(self.hyper_position['liquidationPx'])
+        elif platform == 'aevo': liquidation_price = float(self.aevo_position['liquidation_price'])
+        percent_to_liquidation = calculate_proximity_to_liquidation(mark_price=mark_price, liquidation_price=liquidation_price)
+        # print(f'checking liquidation on {platform}. Current %:{percent_to_liquidation}')
+        if abs(percent_to_liquidation) < self.threshold:
+            print(f"Critical liquidation risk on {platform}, acting!")
+            await self.close_rebalance_start()
             
     async def close_rebalance_start(self):
         await self.stop()
@@ -244,24 +235,24 @@ class TradingBot:
         # hit them currently
         hyper_result , aevo_result = await asyncio.gather(hyper_order, aevo_order)
 
-        # get avg prices for both
-        avg_hyper_price = float(hyper_result['response']['data']['statuses'][0]['filled']['avgPx'])
-        avg_aevo_price = float(aevo_result['avg_price'])
+        # # get avg prices for both
+        # avg_hyper_price = float(hyper_result['response']['data']['statuses'][0]['filled']['avgPx'])
+        # avg_aevo_price = float(aevo_result['avg_price'])
 
-        # then set up stop loss and take profit based on top and bottom
-        low_price = avg_hyper_price if avg_hyper_price < avg_aevo_price else avg_aevo_price
-        high_price = avg_hyper_price if avg_hyper_price > avg_aevo_price else avg_aevo_price
+        # # then set up stop loss and take profit based on top and bottom
+        # low_price = avg_hyper_price if avg_hyper_price < avg_aevo_price else avg_aevo_price
+        # high_price = avg_hyper_price if avg_hyper_price > avg_aevo_price else avg_aevo_price
 
-        low_price = low_price*(1.03)
-        high_price = high_price*(.97)
+        # low_price = low_price*(1.03)
+        # high_price = high_price*(.97)
 
-        hyper_tpsl = self.async_place_tpsl(self.hyper_client,coin=coin,size=size,is_buy=buyer == 'HYPER_LIQUID',low_price=low_price,high_price=high_price)
-        aevo_tpsl = self.async_place_tpsl(self.aevo_client,instrument_id=instrument_id,is_buy=buyer == 'AEVO',quantity=size,low_price=low_price,high_price=high_price)
+        # hyper_tpsl = self.async_place_tpsl(self.hyper_client,coin=coin,size=size,is_buy=buyer == 'HYPER_LIQUID',low_price=low_price,high_price=high_price)
+        # aevo_tpsl = self.async_place_tpsl(self.aevo_client,instrument_id=instrument_id,is_buy=buyer == 'AEVO',quantity=size,low_price=low_price,high_price=high_price)
 
-        hyper_tpsl_result , aevo_tpsl_result = await asyncio.gather(hyper_tpsl, aevo_tpsl)
+        # hyper_tpsl_result , aevo_tpsl_result = await asyncio.gather(hyper_tpsl, aevo_tpsl)
 
-        await self.stop()
-        await self.start()
+        # get the accounts again to update df
+        await self.get_accounts()
 
     async def stop(self):
         await self.hyper_ws.stop()
