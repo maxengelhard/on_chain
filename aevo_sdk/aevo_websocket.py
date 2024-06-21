@@ -5,16 +5,19 @@ from loguru import logger
 from dotenv import load_dotenv
 import json
 from datetime import datetime, timedelta
+import aiohttp
 
 from .aevo import AevoLibClient  # Ensure aevo is accessible as a module
 
 class AevoWebSocket:
-    def __init__(self, message_callback):
+    def __init__(self, message_callback,coins):
         self.message_callback = message_callback
+        self.coins = coins
         self.load_config()
         self.tasks = []
         self.message_queue = asyncio.Queue()
         self.last_message_time = datetime.now()
+        self.BASE_URL = "https://api.aevo.xyz"
 
     def load_config(self):
         dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
@@ -38,6 +41,7 @@ class AevoWebSocket:
         self.tasks = [asyncio.create_task(self.subscribe_and_handle_updates(coin)) for coin in coins]
         self.tasks.append(asyncio.create_task(self.read_messages()))
         self.tasks.append(asyncio.create_task(self.heartbeat()))
+        self.tasks.append(asyncio.create_task(self.periodic_funding_check()))
         await asyncio.gather(*self.tasks)
 
     async def subscribe_and_handle_updates(self, coin):
@@ -58,6 +62,7 @@ class AevoWebSocket:
         try:
             async for msg in self.aevo_client.read_messages():
                 await self.message_queue.put(msg)
+                self.last_message_time = datetime.now()
         except Exception as e:
             logger.error(f"Error reading messages: {e}")
             logger.error(traceback.format_exc())
@@ -70,81 +75,34 @@ class AevoWebSocket:
                 await self.aevo_client.connection.send(json.dumps(ping_message))
                 logger.info("Sent ping to keep connection alive")
 
+    async def periodic_funding_check(self):
+        while True:
+            funding_rates = await self.get_funding(self.coins)
+            # Place the funding rates message into the message queue
+            msg = json.dumps({'type': 'funding', 'data': funding_rates})
+            await self.message_queue.put(msg)
+
+            await asyncio.sleep(300)  # Wait for 5 minutes
+
+    async def get_funding(self,coins:str)-> None:
+        result = {}
+        async with aiohttp.ClientSession() as session:
+            for coin in coins:
+                coin_name = coin
+                if coin[0] == 'k':
+                    coin_name = coin.replace('k', '1000')
+                url = f"{self.BASE_URL}/funding?instrument_name={coin_name}-PERP"
+                headers = {"accept": "application/json"}
+                async with session.get(url, headers=headers) as response:
+                    rsp_json = await response.json()
+                    result[coin] = float(rsp_json['funding_rate'])
+        return result
+
     async def stop(self):
         for task in self.tasks:
             task.cancel()
         await self.aevo_client.close_connection()
         logger.info("AEVO WebSocket connection closed.")
-
-    
-    async def place_order(self,instrument_id,is_buy,reduce_only,quantity,price):
-        logger.info("Creating order...")
-        limit_price = 0
-        if is_buy:
-            limit_price = 2**256 - 1
-        # place market order
-        response = self.aevo_client.create_order(
-            instrument_id=instrument_id,
-            is_buy=is_buy,
-            quantity=quantity,
-            reduce_only=reduce_only,
-            limit_price=limit_price
-        )
-        logger.info(response)
-
-        if not reduce_only:
-            parent_order_id = response['order_id']
-            # place tp
-            take_response = self.place_tp(instrument_id=instrument_id,is_buy=is_buy,quantity=quantity,price=price,parent_order_id=parent_order_id)
-            # place sl
-            stop_response = self.place_sl(instrument_id=instrument_id,is_buy=is_buy,quantity=quantity,price=price,parent_order_id=parent_order_id)
-            return response,take_response,stop_response
-        elif reduce_only:
-            # TODO cancel tpsl
-            return
-    
-    async def place_tp(self,instrument_id,is_buy,quantity,price,parent_order_id):
-        logger.info("Creating tp order...")
-        limit_price = 0
-        trigger_price = price*(.97) if not is_buy else price*(1.03)
-        trigger_price = int(trigger_price * (10**6))
-        if not is_buy:
-            limit_price = trigger_price * 21
-        take_response = self.aevo_client.rest_create_order(
-                instrument_id=instrument_id,
-                is_buy=not is_buy,
-                limit_price=limit_price,
-                quantity=0,
-                close_position=True,
-                reduce_only=True,
-                stop='TAKE_PROFIT',
-                trigger=trigger_price,
-                parent_order_id=parent_order_id
-            )
-        logger.info(take_response)
-        return take_response 
-
-
-    async def place_sl(self,instrument_id,is_buy,quantity,price,parent_order_id):
-        logger.info("Creating sl order...") 
-        limit_price = 0
-        trigger_price = price*(.97) if is_buy else price*(1.03)
-        trigger_price = int(trigger_price * (10**6))
-        if is_buy:
-            limit_price = trigger_price * 21
-        stop_response = self.aevo_client.rest_create_order(
-                instrument_id=instrument_id,
-                is_buy=not is_buy,
-                limit_price=limit_price,
-                quantity=0,
-                close_position=True,
-                reduce_only=True,
-                stop='STOP_LOSS',
-                trigger=trigger_price,
-                parent_order_id=parent_order_id,
-            )
-        logger.info(stop_response)
-        return stop_response
 
 async def process_aevo_message(msg):
     logger.info(f"Processed message: {msg}")

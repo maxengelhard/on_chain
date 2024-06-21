@@ -18,10 +18,10 @@ class TradingBot:
     def __init__(self):
         self.hyper_client = HyperLiquidClient() 
         self.aevo_client = AevoClient()
-        self.hyper_ws = HyperLiquidWebSocket(message_callback=self.process_hyper_message)
-        self.aevo_ws = AevoWebSocket(message_callback=self.process_aevo_message)
-        self.ws_started = False
         self.coins = ['ETH','BTC','SOL','DOGE']
+        self.hyper_ws = HyperLiquidWebSocket(message_callback=self.process_hyper_message)
+        self.aevo_ws = AevoWebSocket(message_callback=self.process_aevo_message,coins=self.coins)
+        self.ws_started = False
         self.leverage = 20
         self.threshold = 0.02
         self.position_coin = None
@@ -72,31 +72,32 @@ class TradingBot:
         mark_price = float(ctx['markPx'])
         self.hyper_mark_price = mark_price
         funding_rate = float(ctx['funding'])
-        self.hyper_funding_rate = funding_rate
         self.fundings[coin] = self.fundings.get(coin, {})
         self.fundings[coin]['hyper_mark_price'] = mark_price
         self.fundings[coin]['hyper_funding_rate'] = funding_rate
         await self.funding_bot_main(coin)
 
 
-
     async def process_aevo_message(self,msg):
         data = msg.get('data',{})
-        if not isinstance(data,dict): return
-        tickers = data.get('tickers',[])
-        if not tickers: return
-        ticker = tickers[0]
-        instrument_id = ticker['instrument_id']
-        coin = ticker['instrument_name'].split('-')[0]
-        mark_price = float(ticker['mark']['price'])
-        self.aevo_mark_price = mark_price
-        funding_rate = float(ticker['funding_rate'])
-        self.aevo_funding_rate = funding_rate
-        self.fundings[coin] = self.fundings.get(coin, {})
-        self.fundings[coin]['aevo_mark_price'] = mark_price
-        self.fundings[coin]['aevo_funding_rate'] = funding_rate
-        self.fundings[coin]['instrument_id'] = instrument_id
-        await self.funding_bot_main(coin)
+        # for api funding rate hits
+        if msg.get('type') == 'funding':
+            for funding_coin , funding_rate in data.items():
+                self.fundings[funding_coin]['aevo_funding_rate'] = funding_rate
+                await self.funding_bot_main(funding_coin)
+        elif not isinstance(data,dict): return
+        else:
+            tickers = data.get('tickers',[])
+            if not tickers: return
+            ticker = tickers[0]
+            instrument_id = ticker['instrument_id']
+            coin = ticker['instrument_name'].split('-')[0]
+            mark_price = float(ticker['mark']['price'])
+            self.aevo_mark_price = mark_price
+            self.fundings[coin] = self.fundings.get(coin, {})
+            self.fundings[coin]['aevo_mark_price'] = mark_price
+            self.fundings[coin]['instrument_id'] = instrument_id
+            await self.funding_bot_main(coin)
 
 
     async def funding_bot_main(self, coin):
@@ -157,6 +158,7 @@ class TradingBot:
         # Ensure this section is not executed concurrently
         async with self.lock:
             if not self.df.empty:
+                print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','hyper_price','aevo_price']])
                 # Find the row with the maximum PNL
                 if not self.has_position:
                     max_pnl_row = self.df.loc[self.df['hours_needed'].idxmin()]
@@ -169,25 +171,30 @@ class TradingBot:
                         print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','pnl','hours_needed','buyer','hyper_side','aevo_side']])
                 # check to see if the funding rate has gone negative and check liquidation
                 elif self.has_position:
-                    # check to see the position coin
-                    open_position_rows = self.df[self.df['open_position'] == True]
-                    print(open_position_rows)
-                    for _, row in open_position_rows.iterrows():
-                        who_bought = 'HYPER_LIQUID' if row['hyper_side'] == -1 else 'AEVO'
-                        buyer = row['buyer']
-                        if (buyer != who_bought):
-                            print('closing out because of negative funding rate')
-                            await self.close_rebalance_start()
+                    open_position_row = self.df[self.df['open_position'] == True]
+                    # await self.check_liquidation(open_position_row)
+                    await self.check_negative_funding_rate(open_position_row)
+                    
 
-    async def check_liquidation(self, mark_price, platform):
-        liquidation_price = None
-        if platform == 'hyper': liquidation_price = float(self.hyper_position['liquidationPx'])
-        elif platform == 'aevo': liquidation_price = float(self.aevo_position['liquidation_price'])
-        percent_to_liquidation = calculate_proximity_to_liquidation(mark_price=mark_price, liquidation_price=liquidation_price)
-        # print(f'checking liquidation on {platform}. Current %:{percent_to_liquidation}')
-        if abs(percent_to_liquidation) < self.threshold:
-            print(f"Critical liquidation risk on {platform}, acting!")
-            await self.close_rebalance_start()
+    async def check_negative_funding_rate(self,open_position_row):
+        # check to see the position coin
+        for _, row in open_position_row.iterrows():
+            who_bought = 'HYPER_LIQUID' if row['hyper_side'] == -1 else 'AEVO'
+            buyer = row['buyer']
+            if (buyer != who_bought):
+                print('closing out because of negative funding rate')
+                await self.close_rebalance_start()
+
+
+    # async def check_liquidation(self, mark_price, platform):
+    #     liquidation_price = None
+    #     if platform == 'hyper': liquidation_price = float(self.hyper_position['liquidationPx'])
+    #     elif platform == 'aevo': liquidation_price = float(self.aevo_position['liquidation_price'])
+    #     percent_to_liquidation = calculate_proximity_to_liquidation(mark_price=mark_price, liquidation_price=liquidation_price)
+    #     # print(f'checking liquidation on {platform}. Current %:{percent_to_liquidation}')
+    #     if abs(percent_to_liquidation) < self.threshold:
+    #         print(f"Critical liquidation risk on {platform}, acting!")
+    #         await self.close_rebalance_start()
             
     async def close_rebalance_start(self):
         await self.stop()

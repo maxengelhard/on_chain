@@ -21,7 +21,7 @@ class HyperLiquidWebSocket:
             self.last_message_time[coin] = datetime.now()
             await self.subscribe(websocket, coin)
             logger.info(f"HyperLiquid WebSocket connection opened for {coin}.")
-            await asyncio.gather(self.handle_update(websocket),self.heartbeat(websocket,coin))
+            await asyncio.gather(self.handle_update(websocket,coin),self.heartbeat(websocket,coin))
 
     async def subscribe(self, websocket, coin):
         subscribe_message = {
@@ -34,12 +34,13 @@ class HyperLiquidWebSocket:
         await websocket.send(json.dumps(subscribe_message))
         logger.info(f"Sent subscription for {coin}")
 
-    async def handle_update(self, websocket):
+    async def handle_update(self, websocket,coin):
         try:
             while True:
                 msg = await websocket.recv()
                 try:
                     msg = json.loads(msg)
+                    self.last_message_time[coin] = datetime.now()
                 except:
                     continue
                 await self.message_callback(msg)
