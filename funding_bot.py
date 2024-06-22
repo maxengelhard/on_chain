@@ -183,6 +183,7 @@ class TradingBot:
         # Ensure this section is not executed concurrently
         async with self.lock:
             if not self.df.empty:
+                print(self.df)
                 # print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','hyper_price','aevo_price','pnl','funding_rate_spread']])
                 # Find the row with the maximum PNL
                 if not self.has_position:
@@ -249,11 +250,11 @@ class TradingBot:
         coin = row['coin']
         buyer = row['buyer']
         instrument_id = row['instrument_id']
-        hyper_balance = float(self.hyper_account['withdrawable'])
+        hyper_balance = float(self.hyper_account['withdrawable'])*.9 # use 90%
         hyper_liquid_mark_price = row['hyper_price'] 
         hyper_size = get_quantity(leverage=self.leverage,price=hyper_liquid_mark_price,balance=hyper_balance,coin=coin)
         
-        aevo_balance = float(self.aevo_account['collaterals'][0]['available_balance'])
+        aevo_balance = float(self.aevo_account['collaterals'][0]['available_balance'])*.9 # use 90%
         aevo_mark_price = row['aevo_price']
         aevo_size = get_quantity(leverage=self.leverage,price=aevo_mark_price,balance=aevo_balance,coin=coin)
         

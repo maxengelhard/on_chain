@@ -15,9 +15,12 @@ class AevoWebSocket:
         self.coins = coins
         self.load_config()
         self.tasks = []
-        self.message_queue = asyncio.Queue()
+        self.message_queue = asyncio.Queue() # queue to store messages
         self.last_message_time = datetime.now()
         self.BASE_URL = "https://api.aevo.xyz"
+        self.order_event = asyncio.Event()  # Event to trigger order placement
+        self.order_queue = asyncio.Queue() # Queue to store orders
+        self.connected_event = asyncio.Event()  # Event to signal that WebSocket is connected
 
     def load_config(self):
         dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
@@ -38,11 +41,17 @@ class AevoWebSocket:
     async def start(self, coins):
         await self.aevo_client.open_connection()
         logger.info("AEVO WebSocket connection opened.")
+        self.connected_event.set() 
         coins.append('pos')
-        self.tasks = [asyncio.create_task(self.subscribe_and_handle_updates(coin)) for coin in coins]
-        self.tasks.append(asyncio.create_task(self.read_messages()))
-        self.tasks.append(asyncio.create_task(self.heartbeat()))
-        self.tasks.append(asyncio.create_task(self.periodic_funding_check()))
+        self.tasks = [
+            asyncio.create_task(self.subscribe_and_handle_updates(coin)) for coin in self.coins
+        ]
+        self.tasks.extend([
+            asyncio.create_task(self.read_messages()),
+            asyncio.create_task(self.heartbeat()),
+            asyncio.create_task(self.periodic_funding_check()),
+            # asyncio.create_task(self.handle_order_event())
+        ])
         await asyncio.gather(*self.tasks)
 
     async def subscribe_and_handle_updates(self, coin):
@@ -68,6 +77,7 @@ class AevoWebSocket:
             async for msg in self.aevo_client.read_messages():
                 await self.message_queue.put(msg)
                 self.last_message_time = datetime.now()
+                # logger.debug(f"Received message: {msg}")
         except Exception as e:
             logger.error(f"Error reading messages: {e}")
             logger.error(traceback.format_exc())
@@ -86,6 +96,7 @@ class AevoWebSocket:
             # Place the funding rates message into the message queue
             msg = json.dumps({'type': 'funding', 'data': funding_rates})
             await self.message_queue.put(msg)
+            # logger.info("Added funding rates to message queue")
 
             await asyncio.sleep(300)  # Wait for 5 minutes
 
@@ -104,6 +115,40 @@ class AevoWebSocket:
                     result[coin] = float(rsp_json['funding_rate'])
         return result
 
+
+    async def handle_order_event(self):
+        while True:
+            logger.info("waiting for order event.. ")
+            await self.order_event.wait()
+            logger.info("Order event set")
+            order_params = await self.order_queue.get() # get order params from queue
+            logger.info(f"Order event triggered with params: {order_params}")
+            await self.place_order(*order_params)
+            self.order_event.clear()
+
+    # place order
+    async def place_order(self,instrument_id,is_buy,reduce_only,quantity):
+        logger.info("Creating ws order...")
+        limit_price = 0
+        if is_buy:
+            limit_price = 1000000
+        # place market order
+        response = await self.aevo_client.create_order(
+            instrument_id=instrument_id,
+            is_buy=is_buy,
+            quantity=quantity,
+            limit_price=limit_price
+            # reduce_only=reduce_only,
+        )
+        logger.info(response)
+
+        return response
+    
+    async def cancel_order(self,order_id):
+        order_id = await self.aevo_client.cancel_order(
+        order_id=order_id,
+    )
+
     async def stop(self):
         for task in self.tasks:
             task.cancel()
@@ -111,11 +156,23 @@ class AevoWebSocket:
         logger.info("AEVO WebSocket connection closed.")
 
 async def process_aevo_message(msg):
+    # return
     logger.info(f"Processed message: {msg}")
 
 if __name__ == "__main__":
     async def main():
-        manager = AevoWebSocket(message_callback=process_aevo_message)
-        await manager.start(coins=['ETH', 'BTC', 'SOL', 'DOGE'])
+        manager = AevoWebSocket(message_callback=process_aevo_message,coins=['ETH', 'BTC', 'SOL', 'DOGE'])
+        # Start the websocket as a background task
+        ws_task = asyncio.create_task(manager.start(coins=['ETH', 'BTC', 'SOL', 'DOGE']))
+
+        await manager.connected_event.wait()
+        logger.info("WebSocket connection established.")
+
+        logger.info("Putting order into queue and setting event.")
+        await manager.order_queue.put((1,True,False,0.01))
+        manager.order_event.set()
+        # await manager.place_order(instrument_id=1,is_buy=True,reduce_only=False,quantity=0.01)
+        # await asyncio.sleep(1)
+
 
     asyncio.run(main())
