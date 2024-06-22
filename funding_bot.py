@@ -183,7 +183,6 @@ class TradingBot:
         # Ensure this section is not executed concurrently
         async with self.lock:
             if not self.df.empty:
-                print(self.df)
                 # print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','hyper_price','aevo_price','pnl','funding_rate_spread']])
                 # Find the row with the maximum PNL
                 if not self.has_position:
