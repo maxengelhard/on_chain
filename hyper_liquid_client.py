@@ -7,6 +7,7 @@ import json
 import os
 from web3 import Web3
 from web3.middleware import geth_poa_middleware
+from loguru import logger
 
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
@@ -61,8 +62,12 @@ class HyperLiquidClient:
 
     def place_order(self,coin:str,size:float,is_buy:bool):
         # Place market order
-        order_result = self.exchange.market_open(coin=coin, is_buy=is_buy, sz=size)
-        return order_result
+        logger.info(f"Creating hyper {'Buy' if is_buy else 'Sell'} order for {coin}")
+        try:
+            order_result = self.exchange.market_open(coin=coin, is_buy=is_buy, sz=size)
+            return order_result
+        except Exception as e:
+            logger.info(f"Error opening hyper position. Error: {e}") 
         
     
     def place_tpsl(self,coin:str,size:float,is_buy:bool,low_price:float,high_price:float):
@@ -91,8 +96,12 @@ class HyperLiquidClient:
         return take_result
 
     def close_position(self,coin:str):
-        order_result = self.exchange.market_close(coin)
-        return order_result
+        logger.info(f"Closing hyper position for {coin}") 
+        try:
+            order_result = self.exchange.market_close(coin)
+            return order_result
+        except Exception as e:
+            logger.info(f"Error closing hyper position. Error: {e}")
 
     def withdraw(self,amount:float):
         withdraw_result = self.exchange.withdraw_from_bridge(amount, self.ADDRESS)

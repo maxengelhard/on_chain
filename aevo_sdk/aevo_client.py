@@ -40,17 +40,22 @@ class AevoClient:
         )
 
     def place_order(self,instrument_id,is_buy,reduce_only,quantity):
-        logger.info("Creating order...")
+        if not reduce_only: logger.info(f"Creating aevo {'Buy' if is_buy else 'Sell'} order for {instrument_id}")
+        else: logger.info(f"Closing aevo order for {instrument_id}")
         # place market order
-        response = self.aevo_client.rest_create_market_order(
-            instrument_id=instrument_id,
-            is_buy=is_buy,
-            quantity=quantity,
-            reduce_only=reduce_only,
-        )
-        logger.info(response)
+        try:
+            response = self.aevo_client.rest_create_market_order(
+                instrument_id=instrument_id,
+                is_buy=is_buy,
+                quantity=quantity,
+                reduce_only=reduce_only,
+            )
+            logger.info(response)
+            return response
+        except Exception as e:
+            if not reduce_only: logger.info(f"Error creating aevo order. Error: {e}")
+            else: logger.info(f"Error closing aevo order. Error: {e}")
 
-        return response
 
 
     def place_tpsl(self,instrument_id,is_buy,quantity,high_price,low_price):
