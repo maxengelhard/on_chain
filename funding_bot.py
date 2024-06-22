@@ -229,13 +229,13 @@ class TradingBot:
         self.hyper_client.close_position(coin=self.hyper_position['coin'])
         self.aevo_client.place_order(instrument_id=instrument_id,is_buy=aevo_opposite_side,reduce_only=True,quantity=quantity)
         await self.rebalance()
-        await self.start()
+        # await self.start()
 
     async def rebalance(self):    
         #### re balance #####
         # check and update balances again # 
         await self.get_accounts()
-        await rebalance(hyper_client=self.hyper_client,aevo_client=self.aevo_client,hyper_account=self.hyper_account,aevo_account=self.aevo_account) 
+        await rebalance(hyper_client=self.hyper_client,aevo_client=self.aevo_client,hyper_account=self.hyper_account,aevo_account=self.aevo_account)
 
         # self.funding_rates()
         # self.open_positions() 
