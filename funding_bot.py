@@ -151,7 +151,7 @@ class TradingBot:
                 spread = aevo_funding_rate - hyper_funding_rate
                 total_pnl = self.get_profitablity(hyper_mark_price=hyper_mark_price,aevo_mark_price=aevo_mark_price,buyer='HYPER_LIQUID')
 
-            hours_needed = total_pnl * -1 / spread
+            hours_needed = (total_pnl * -1) / spread
 
             pos_coin_is_coin = coin == self.position_coin
 
