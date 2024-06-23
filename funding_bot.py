@@ -217,6 +217,7 @@ class TradingBot:
                 current_time = datetime.now()
                 minutes = current_time.minute
                 if total_pnl > 0:
+                    logger.info(f"Closing profitbale position {total_pnl}")
                     await self.close_rebalance_start()
                 elif minutes == 58:
                     logger.info("Closing position at 55-minute mark of the hour.")
