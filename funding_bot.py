@@ -4,6 +4,7 @@ from aevo_sdk.aevo_client import AevoClient
 from hyper_liquid_client import HyperLiquidClient
 import pandas as pd
 from loguru import logger
+from datetime import datetime
 ### rebalance ###
 from rebalance import rebalance
 ### utils ###
@@ -123,11 +124,19 @@ class TradingBot:
             await self.funding_bot_main(coin)
 
 
+    def get_profitablity(self,hyper_mark_price,aevo_mark_price,buyer):
+        if buyer == 'AEVO':
+            percent_pnl = (hyper_mark_price - aevo_mark_price) / aevo_mark_price
+        elif buyer == 'HYPER_LIQUID':
+            percent_pnl = (aevo_mark_price - hyper_mark_price) / hyper_mark_price 
+
+        total_pnl = percent_pnl - self.hyper_client.TAKER_FEE - self.aevo_client.TAKER_FEE
+        return total_pnl 
+
+
     async def funding_bot_main(self, coin):
         pos = self.fundings.get(coin, {})
         if 'hyper_mark_price' in pos and 'hyper_funding_rate' in pos and 'aevo_mark_price' in pos and 'aevo_funding_rate' in pos:
-            hyper_fees = self.hyper_client.TAKER_FEE
-            aevo_fees = self.aevo_client.TAKER_FEE
 
             instrument_id = pos['instrument_id']
             hyper_mark_price = pos['hyper_mark_price']
@@ -137,12 +146,11 @@ class TradingBot:
 
             if hyper_funding_rate > aevo_funding_rate:
                 spread = hyper_funding_rate - aevo_funding_rate
-                percent_pnl = (hyper_mark_price - aevo_mark_price) / aevo_mark_price
+                total_pnl = self.get_profitablity(hyper_mark_price=hyper_mark_price,aevo_mark_price=aevo_mark_price,buyer='AEVO')
             elif hyper_funding_rate < aevo_funding_rate:
                 spread = aevo_funding_rate - hyper_funding_rate
-                percent_pnl = (aevo_mark_price - hyper_mark_price) / hyper_mark_price
+                total_pnl = self.get_profitablity(hyper_mark_price=hyper_mark_price,aevo_mark_price=aevo_mark_price,buyer='HYPER_LIQUID')
 
-            total_pnl = percent_pnl - hyper_fees - aevo_fees
             hours_needed = total_pnl * -1 / spread
 
             pos_coin_is_coin = coin == self.position_coin
@@ -205,7 +213,14 @@ class TradingBot:
             who_bought = 'HYPER_LIQUID' if row['hyper_side'] == -1 else 'AEVO'
             buyer = row['buyer']
             if (buyer != who_bought):
-                await self.close_rebalance_start()
+                total_pnl = self.get_profitablity(row['hyper_price'], row['aevo_price'], row['buyer'])
+                current_time = datetime.now()
+                minutes = current_time.minute
+                if total_pnl > 0:
+                    await self.close_rebalance_start()
+                elif minutes == 55:
+                    logger.info("Closing position at 55-minute mark of the hour.")
+                    await self.close_rebalance_start()
 
     async def check_liquidation(self, open_position_rows):
         for _, row in open_position_rows.iterrows():
@@ -228,7 +243,8 @@ class TradingBot:
         quantity = float(self.aevo_position['amount'])
         self.hyper_client.close_position(coin=self.hyper_position['coin'])
         self.aevo_client.place_order(instrument_id=instrument_id,is_buy=aevo_opposite_side,reduce_only=True,quantity=quantity)
-        await self.rebalance()
+        await self.get_accounts() 
+        # await self.rebalance()
         # await self.start()
 
     async def rebalance(self):    
