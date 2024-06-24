@@ -19,7 +19,7 @@ class TradingBot:
     def __init__(self):
         self.hyper_client = HyperLiquidClient() 
         self.aevo_client = AevoClient()
-        self.coins = ['ETH','SOL','DOGE']
+        self.coins = ['BTC','ETH','SOL','DOGE']
         self.hyper_ws = HyperLiquidWebSocket(message_callback=self.process_hyper_message)
         self.aevo_ws = AevoWebSocket(message_callback=self.process_aevo_message,coins=self.coins)
         self.ws_started = False
