@@ -144,7 +144,7 @@ class TradingBot:
             aevo_mark_price = pos['aevo_mark_price']
             aevo_funding_rate = pos['aevo_funding_rate']
 
-            if hyper_funding_rate > aevo_funding_rate:
+            if hyper_funding_rate >= aevo_funding_rate:
                 spread = hyper_funding_rate - aevo_funding_rate
                 total_pnl = self.get_profitablity(hyper_mark_price=hyper_mark_price,aevo_mark_price=aevo_mark_price,buyer='AEVO')
             elif hyper_funding_rate < aevo_funding_rate:
