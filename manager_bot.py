@@ -45,7 +45,7 @@ def manage_bot():
     while True:
         process = start_bot()
         print(f"Started bot with PID {process.pid}")
-        time.sleep(15 * 1)  # Run for 15 minutes
+        time.sleep(15 * 60)  # Run for 15 minutes
         print(f"Stopping bot with PID {process.pid}")
         stop_bot(process)
 
