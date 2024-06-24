@@ -25,6 +25,7 @@ class TradingBot:
         self.ws_started = False
         self.leverage = 20
         self.threshold = 0.01
+        self.profitability_threshold = 0.02
         self.position_coin = None
         self.has_position = None
         self.hyper_account = None
@@ -219,8 +220,8 @@ class TradingBot:
                 if total_pnl > 0:
                     logger.info(f"Closing profitbale position {total_pnl}")
                     await self.close_rebalance_start()
-                elif minutes == 58:
-                    logger.info("Closing position at 55-minute mark of the hour.")
+                elif minutes >= 58:
+                    logger.info("Closing position at 58-minute mark of the hour.")
                     await self.close_rebalance_start()
 
     async def check_liquidation(self, open_position_rows):
@@ -234,9 +235,17 @@ class TradingBot:
                 mark_price = hyper_price if platform == 'hyper' else aevo_price
                 liquidation_price = hyper_liquidation_price if platform == 'hyper' else aevo_liquidation_price
                 percent_to_liquidation = calculate_proximity_to_liquidation(mark_price=mark_price, liquidation_price=liquidation_price)
-                if abs(percent_to_liquidation) < self.threshold:
+                # first check if I need to close NOW
+                if percent_to_liquidation <= self.threshold:
                     logger.info(f"Critical liquidation risk acting!")
                     await self.close_rebalance_start()
+                # else if it's getting close check if I can close profitbale
+                elif percent_to_liquidation <= self.profitability_threshold:
+                    total_pnl = self.get_profitablity(hyper_price, aevo_price, row['buyer'])
+                    if total_pnl > 0:
+                        logger.info(f"Closing profitbale position {total_pnl}")
+                        await self.close_rebalance_start()
+                
             
     async def close_rebalance_start(self):
         instrument_id = self.aevo_position['instrument_id']

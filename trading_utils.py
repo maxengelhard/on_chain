@@ -5,7 +5,7 @@ def calculate_proximity_to_liquidation(mark_price, liquidation_price):
         percent_to_liquidation = (liquidation_price - mark_price) / mark_price
     else:  # Short position
         percent_to_liquidation = (mark_price - liquidation_price) / liquidation_price
-    return percent_to_liquidation
+    return abs(percent_to_liquidation)
 
 def amount_to_withdraw(higher_value:float,lower_value:float) -> None:
     mid_point = float((higher_value + lower_value)/2)
