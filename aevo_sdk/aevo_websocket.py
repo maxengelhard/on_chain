@@ -20,7 +20,7 @@ class AevoWebSocket:
         self.BASE_URL = "https://api.aevo.xyz"
         self.order_event = asyncio.Event()  # Event to trigger order placement
         self.order_queue = asyncio.Queue() # Queue to store orders
-        self.connected_event = asyncio.Event()  # Event to signal that WebSocket is connected
+        # self.connected_event = asyncio.Event()  # Event to signal that WebSocket is connected
 
     def load_config(self):
         dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
@@ -41,8 +41,9 @@ class AevoWebSocket:
     async def start(self, coins):
         await self.aevo_client.open_connection()
         logger.info("AEVO WebSocket connection opened.")
-        self.connected_event.set() 
-        coins.append('pos')
+        # self.connected_event.set()
+        if not 'pos' in coins:
+            coins.append('pos')
         self.tasks = [
             asyncio.create_task(self.subscribe_and_handle_updates(coin)) for coin in self.coins
         ]
@@ -169,7 +170,7 @@ if __name__ == "__main__":
         # Start the websocket as a background task
         ws_task = asyncio.create_task(manager.start(coins=['ETH', 'BTC', 'SOL', 'DOGE']))
 
-        await manager.connected_event.wait()
+        # await manager.connected_event.wait()
         logger.info("WebSocket connection established.")
 
         logger.info("Putting order into queue and setting event.")
