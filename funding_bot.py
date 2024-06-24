@@ -62,8 +62,8 @@ class TradingBot:
         self.aevo_value = float(self.aevo_account['equity'])
         self.update_value()
         # send a message to telegram
-        logger.info('sending telegram message on accounts')
-        await self.telegram_manager.send_acc_message()
+        # logger.info('sending telegram message on accounts')
+        # await self.telegram_manager.send_acc_message()
 
         if 'assetPositions' in self.hyper_account and self.hyper_account['assetPositions']:
             self.hyper_position = self.hyper_account['assetPositions'][0]['position']
