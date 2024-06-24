@@ -267,11 +267,11 @@ class TradingBot:
         coin = row['coin']
         buyer = row['buyer']
         instrument_id = row['instrument_id']
-        hyper_balance = float(self.hyper_account['withdrawable'])*.1 # testing using 10%
+        hyper_balance = float(self.hyper_account['withdrawable'])*.9 # testing using 10%
         hyper_liquid_mark_price = row['hyper_price'] 
         hyper_size = get_quantity(leverage=self.leverage,price=hyper_liquid_mark_price,balance=hyper_balance,coin=coin)
         
-        aevo_balance = float(self.aevo_account['collaterals'][0]['available_balance'])*.1 # testing using 10%
+        aevo_balance = float(self.aevo_account['collaterals'][0]['available_balance'])*.9 # testing using 10%
         aevo_mark_price = row['aevo_price']
         aevo_size = get_quantity(leverage=self.leverage,price=aevo_mark_price,balance=aevo_balance,coin=coin)
         
