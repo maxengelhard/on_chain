@@ -86,3 +86,4 @@ websocket-client==1.8.0
 websockets==12.0
 Werkzeug==3.0.3
 yarl==1.9.4
+python_telegram_bot==21.3

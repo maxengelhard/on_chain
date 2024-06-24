@@ -15,11 +15,15 @@ from trading_utils import get_quantity,calculate_proximity_to_liquidation
 from hyper_websocket import HyperLiquidWebSocket
 from aevo_sdk.aevo_websocket import AevoWebSocket
 
+#### telegram ####
+from telegram_manager import TelegramManager
+
 
 class TradingBot:
     def __init__(self):
         self.hyper_client = HyperLiquidClient() 
         self.aevo_client = AevoClient()
+        self.telegram_manager = TelegramManager()
         self.coins = ['BTC','ETH','SOL','DOGE']
         self.hyper_ws = HyperLiquidWebSocket(message_callback=self.process_hyper_message)
         self.aevo_ws = AevoWebSocket(message_callback=self.process_aevo_message,coins=self.coins)
@@ -56,7 +60,10 @@ class TradingBot:
 
         self.hyper_value = float(self.hyper_account['marginSummary']['accountValue'])
         self.aevo_value = float(self.aevo_account['equity'])
-        self.update_value() 
+        self.update_value()
+        # send a message to telegram
+        logger.info('sending telegram message on accounts')
+        await self.telegram_manager.send_acc_message()
 
         if 'assetPositions' in self.hyper_account and self.hyper_account['assetPositions']:
             self.hyper_position = self.hyper_account['assetPositions'][0]['position']
