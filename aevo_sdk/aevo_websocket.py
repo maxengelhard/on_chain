@@ -74,13 +74,17 @@ class AevoWebSocket:
     
     async def read_messages(self):
         try:
-            async for msg in self.aevo_client.read_messages():
+            async for msg in self.aevo_client.read_messages(on_disconnect=self.on_disconnect):
                 await self.message_queue.put(msg)
                 self.last_message_time = datetime.now()
                 # logger.debug(f"Received message: {msg}")
         except Exception as e:
             logger.error(f"Error reading messages: {e}")
             logger.error(traceback.format_exc())
+
+    async def on_disconnect(self):
+        logger.info("Handling reconnection...")
+        await self.start(self.coins)
 
     async def heartbeat(self):
         while True:

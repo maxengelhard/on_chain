@@ -173,7 +173,7 @@ class AevoLibClient:
                 websockets.exceptions.ConnectionClosedOK,
             ) as e:
                 if on_disconnect:
-                    on_disconnect()
+                    await on_disconnect()
                 logger.error("Aevo websocket connection close")
                 logger.error(e)
                 logger.error(traceback.format_exc())
