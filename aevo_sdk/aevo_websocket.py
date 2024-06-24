@@ -51,7 +51,6 @@ class AevoWebSocket:
             asyncio.create_task(self.read_messages()),
             asyncio.create_task(self.heartbeat()),
             asyncio.create_task(self.periodic_funding_check()),
-            # asyncio.create_task(self.handle_order_event())
         ])
         await asyncio.gather(*self.tasks)
 

@@ -1,3 +1,4 @@
+import os
 import asyncio
 from decimal import *
 from aevo_sdk.aevo_client import AevoClient
@@ -35,6 +36,11 @@ class TradingBot:
         self.fundings = {}
         self.df = pd.DataFrame(columns=['coin', 'hyper_funding_rate', 'aevo_funding_rate', 'funding_rate_spread', 'hyper_price', 'aevo_price', 'pnl', 'hours_needed','instrument_id','buyer','open_position','hyper_side','aevo_side','hyper_liquidation_px','aevo_liquidation_px'])
         self.lock = asyncio.Lock()  # Initialize the lock
+        self.hyper_value = 0.0
+        self.aevo_value = 0.0
+        self.value_df = pd.DataFrame(columns=['timestamp','aevo_value','hyper_value','total_value'])
+        self.value_log_file = 'account_values.csv'
+        self.load_value_df() 
 
     async def start(self):
         await self.get_accounts()
@@ -47,6 +53,10 @@ class TradingBot:
         # Load positions from both platforms
         self.hyper_account = self.hyper_client.get_account()
         self.aevo_account = await self.aevo_client.get_account()
+
+        self.hyper_value = float(self.hyper_account['marginSummary']['accountValue'])
+        self.aevo_value = float(self.aevo_account['equity'])
+        self.update_value() 
 
         if 'assetPositions' in self.hyper_account and self.hyper_account['assetPositions']:
             self.hyper_position = self.hyper_account['assetPositions'][0]['position']
@@ -80,15 +90,17 @@ class TradingBot:
             await self.funding_bot_main(coin)
         elif msg.get('channel') == 'webData2':
             try:
-                position = data['clearinghouseState']['assetPositions'][0].get('position')
+                clearing_house_state = data['clearinghouseState']
+                # to get active posiition
+                position = clearing_house_state['assetPositions'][0].get('position')
                 if not position: return 
                 coin = position['coin']
                 self.fundings[coin] = self.fundings.get(coin, {})
                 liquidation_price = position['liquidationPx']
                 self.fundings[coin]['hyper_liquidation_px'] = liquidation_price
                 await self.funding_bot_main(coin)
-            except:
-                pass
+            except Exception as e:
+                logger.info(f"Error with Hyper WebData2 {e}")
 
 
 
@@ -124,6 +136,24 @@ class TradingBot:
             self.fundings[coin]['instrument_id'] = instrument_id
             await self.funding_bot_main(coin)
 
+    def load_value_df(self):
+        if os.path.exists(self.value_log_file):
+            self.value_df = pd.read_csv(self.value_log_file)
+        else:
+            self.value_df = pd.DataFrame(columns=['timestamp', 'aevo_value', 'hyper_value', 'total_value'])
+
+    def save_value_df(self):
+        self.value_df.to_csv(self.value_log_file, index=False)
+
+    ### to see my profit's
+    def update_value(self):
+        total_value = self.hyper_value + self.aevo_value
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        new_row = pd.DataFrame([[timestamp, self.aevo_value, self.hyper_value, total_value]], columns=self.value_df.columns)
+        self.value_df = pd.concat([self.value_df, new_row], ignore_index=True)
+        self.save_value_df()
+        logger.info(f"Updated account values: {new_row}")
+
 
     def get_profitablity(self,hyper_mark_price,aevo_mark_price,buyer):
         if buyer == 'AEVO':
@@ -132,8 +162,7 @@ class TradingBot:
             percent_pnl = (aevo_mark_price - hyper_mark_price) / hyper_mark_price 
 
         total_pnl = percent_pnl - self.hyper_client.TAKER_FEE - self.aevo_client.TAKER_FEE
-        return total_pnl 
-
+        return total_pnl
 
     async def funding_bot_main(self, coin):
         pos = self.fundings.get(coin, {})
@@ -168,10 +197,10 @@ class TradingBot:
                 'instrument_id' : instrument_id, 
                 'buyer': 'AEVO' if hyper_funding_rate > aevo_funding_rate else 'HYPER_LIQUID',
                 'open_position': pos_coin_is_coin,
-                'hyper_side' : self.hyper_side if pos_coin_is_coin else None,
-                'aevo_side' : self.aevo_side if pos_coin_is_coin else None,
-                'hyper_liquidation_px' : pos.get('hyper_liquidation_px',None),
-                'aevo_liquidation_px' : pos.get('aevo_liquidation_px',None)
+                'hyper_side' : self.hyper_side if pos_coin_is_coin else 0,
+                'aevo_side' : self.aevo_side if pos_coin_is_coin else 0,
+                'hyper_liquidation_px' : pos.get('hyper_liquidation_px',0),
+                'aevo_liquidation_px' : pos.get('aevo_liquidation_px',0)
             }
 
             self.update_dataframe(result)
