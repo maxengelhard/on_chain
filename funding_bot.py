@@ -256,11 +256,11 @@ class TradingBot:
                 if total_pnl > 0:
                     logger.info(f"Closing profitbale position {total_pnl}")
                     await self.close_rebalance_start()
-                    await self.telegram_manager.send_message(message=f' Closing Profitbale Price Because of Negative Funding Rates\n Hyper Price: {row['hyper_price']}\n Aevo Price: {row['aevo_price']}\n PNL: {total_pnl}')
+                    await self.telegram_manager.send_message(message=f" Closing Profitbale Price Because of Negative Funding Rates\n Hyper Price: {row['hyper_price']}\n Aevo Price: {row['aevo_price']}\n PNL: {total_pnl}")
                 elif minutes >= 58:
                     logger.info("Closing position at 58-minute mark of the hour.")
                     await self.close_rebalance_start()
-                    await self.telegram_manager.send_message(message=f' Closing Because of Negative Funding Rates and greater than 58 minute mark\n Hyper Price: {row['hyper_price']}\n Aevo Price: {row['aevo_price']}\n PNL: {total_pnl}')
+                    await self.telegram_manager.send_message(message=f" Closing Because of Negative Funding Rates and greater than 58 minute mark\n Hyper Price: {row['hyper_price']}\n Aevo Price: {row['aevo_price']}\n PNL: {total_pnl}")
 
     async def check_liquidation(self, open_position_rows):
         for _, row in open_position_rows.iterrows():
