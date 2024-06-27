@@ -37,6 +37,11 @@ class HyperLiquidClient:
     def get_account(self) -> None:
         user_info = self.info.user_state(address=self.ADDRESS)
         return user_info
+    
+    def update_leverage(self,leverage,coin) -> None:
+        update_leveage_result = self.exchange.update_leverage(leverage,coin)
+        logger.info(f'Updated leverage on Hyper for {coin}: {leverage}')
+        return update_leveage_result
 
     def get_funding(self,coins:list) -> None:
         url = f"{self.BASE_URL}/info"

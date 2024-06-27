@@ -207,6 +207,17 @@ class AevoLibClient:
         return data
 
     # Private REST API
+    def update_leverage(self,instrument_id,leverage):
+        data = json.dumps({
+            "instrument": instrument_id,
+            "leverage": leverage
+        })
+        req = self.client.post(
+            f"{self.rest_url}/account/leverage", json=data, headers=self.rest_headers
+        )
+        return req.json()
+
+
     def rest_create_order(
         self, instrument_id, is_buy, limit_price, quantity, post_only=True,close_position=None,stop=None,trigger=None,reduce_only=None,time_in_force=None,
     ):

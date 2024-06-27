@@ -28,7 +28,7 @@ class TradingBot:
         self.hyper_ws = HyperLiquidWebSocket(message_callback=self.process_hyper_message)
         self.aevo_ws = AevoWebSocket(message_callback=self.process_aevo_message,coins=self.coins)
         self.ws_started = False
-        self.leverage = 20
+        self.leverage = 10
         self.threshold = 0.01
         self.profitability_threshold = 0.02
         self.position_coin = None
@@ -44,7 +44,8 @@ class TradingBot:
         self.aevo_value = 0.0
         self.value_df = pd.DataFrame(columns=['timestamp','aevo_value','hyper_value','total_value'])
         self.value_log_file = 'account_values.csv'
-        self.load_value_df() 
+        self.load_value_df()
+        self.update_leverage()
 
     async def start(self):
         await self.get_accounts()
@@ -52,6 +53,11 @@ class TradingBot:
             self.hyper_ws.start(coins=self.coins),
             self.aevo_ws.start(coins=self.coins)
         )
+
+    def update_leverage(self):
+        for coin in self.coins:
+            self.hyper_client.update_leverage(leverage=self.leverage,coin=coin)
+            self.aevo_client.update_leverage(leverage=self.leverage,coin=coin)
         
     async def get_accounts(self):
         # Load positions from both platforms

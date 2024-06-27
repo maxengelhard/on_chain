@@ -39,6 +39,14 @@ class AevoClient:
             env="mainnet",
         )
 
+    def update_leverage(self,leverage,coin):
+        market_data = self.get_markets(asset=coin,instrument='PERPETUAL')
+        instrument_id = market_data[0]['instrument_id']
+        update_leverage_rsp = self.aevo_client.update_leverage(instrument_id=instrument_id,leverage=leverage)
+        logger.info(f'Updated leverage on AEVO for {coin}: {leverage}')
+        return update_leverage_rsp
+
+
     def place_order(self,instrument_id,is_buy,reduce_only,quantity):
         if not reduce_only: logger.info(f"Creating aevo {'Buy' if is_buy else 'Sell'} order for {instrument_id}")
         else: logger.info(f"Closing aevo order for {instrument_id}")
@@ -128,7 +136,7 @@ class AevoClient:
         return response
 
 
-    async def get_markets(self,asset,instrument) -> None:
+    def get_markets(self,asset,instrument) -> None:
         response = self.aevo_client.get_markets(asset,instrument)
         return response
 
