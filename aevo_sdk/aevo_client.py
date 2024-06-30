@@ -47,16 +47,25 @@ class AevoClient:
         return update_leverage_rsp
 
 
-    def place_order(self,instrument_id,is_buy,reduce_only,quantity):
+    def place_order(self,instrument_id,is_buy,reduce_only,quantity,limit_px):
         if not reduce_only: logger.info(f"Creating aevo {'Buy' if is_buy else 'Sell'} order for {instrument_id}")
         else: logger.info(f"Closing aevo order for {instrument_id}")
-        # place market order
+        
         try:
-            response = self.aevo_client.rest_create_market_order(
+            # place market order
+            # response = self.aevo_client.rest_create_market_order(
+            #     instrument_id=instrument_id,
+            #     is_buy=is_buy,
+            #     quantity=quantity,
+            #     reduce_only=reduce_only,
+            # )
+            # place limit order
+            response = self.aevo_client.rest_create_order( 
                 instrument_id=instrument_id,
                 is_buy=is_buy,
                 quantity=quantity,
-                reduce_only=reduce_only,
+                reduce_only=reduce_only, 
+                limit_price=limit_px
             )
             logger.info(response)
             return response

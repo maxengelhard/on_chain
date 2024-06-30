@@ -24,7 +24,7 @@ class TradingBot:
         self.hyper_client = HyperLiquidClient() 
         self.aevo_client = AevoClient()
         self.telegram_manager = TelegramManager()
-        self.coins = ['BTC','ETH','SOL','DOGE']
+        self.coins = ['ETH','SOL','DOGE']
         self.hyper_ws = HyperLiquidWebSocket(message_callback=self.process_hyper_message)
         self.aevo_ws = AevoWebSocket(message_callback=self.process_aevo_message,coins=self.coins)
         self.ws_started = False
@@ -105,6 +105,7 @@ class TradingBot:
             try:
                 clearing_house_state = data['clearinghouseState']
                 # to get active posiition
+                if not clearing_house_state['assetPositions']: return
                 position = clearing_house_state['assetPositions'][0].get('position')
                 if not position: return 
                 coin = position['coin']
@@ -234,7 +235,7 @@ class TradingBot:
         # Ensure this section is not executed concurrently
         async with self.lock:
             if not self.df.empty:
-                # print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','hyper_price','aevo_price','pnl','funding_rate_spread']])
+                print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','hyper_price','aevo_price','pnl','funding_rate_spread','hours_needed']])
                 # Find the row with the maximum PNL
                 if not self.has_position:
                     max_pnl_row = self.df.loc[self.df['hours_needed'].idxmin()]
@@ -246,7 +247,7 @@ class TradingBot:
                 # check to see if the funding rate has gone negative and check liquidation
                 elif self.has_position:
                     open_position_rows = self.df[self.df['open_position'] == True]
-                    await self.check_liquidation(open_position_rows)
+                    # await self.check_liquidation(open_position_rows)
                     await self.check_negative_funding_rate(open_position_rows)
                     
 
@@ -268,29 +269,29 @@ class TradingBot:
                     await self.close_rebalance_start()
                     await self.telegram_manager.send_message(message=f" Closing Because of Negative Funding Rates and greater than 58 minute mark\n Hyper Price: {row['hyper_price']}\n Aevo Price: {row['aevo_price']}\n PNL: {total_pnl}")
 
-    async def check_liquidation(self, open_position_rows):
-        for _, row in open_position_rows.iterrows():
-            if not row['hyper_liquidation_px'] or not row['aevo_liquidation_px']: continue 
-            hyper_price = row['hyper_price']
-            aevo_price = row['aevo_price']
-            hyper_liquidation_price = float(row['hyper_liquidation_px'])
-            aevo_liquidation_price = float(row['aevo_liquidation_px'])
-            for platform in ('hyper','aevo'):
-                mark_price = hyper_price if platform == 'hyper' else aevo_price
-                liquidation_price = hyper_liquidation_price if platform == 'hyper' else aevo_liquidation_price
-                percent_to_liquidation = calculate_proximity_to_liquidation(mark_price=mark_price, liquidation_price=liquidation_price)
-                # first check if I need to close NOW
-                if percent_to_liquidation <= self.threshold:
-                    logger.info(f"Critical liquidation risk acting!")
-                    await self.close_rebalance_start()
-                    await self.telegram_manager.send_message(message=f' Critical Liquidation on {platform}/n Price is {percent_to_liquidation} away from liquidation/n Mark Price: {mark_price}/n Liquidation Price: {liquidation_price}')
-                # else if it's getting close check if I can close profitbale
-                elif percent_to_liquidation <= self.profitability_threshold:
-                    total_pnl = self.get_profitablity(hyper_price, aevo_price, row['buyer'])
-                    if total_pnl > 0:
-                        logger.info(f"Closing profitbale position {total_pnl}")
-                        await self.close_rebalance_start()
-                        await self.telegram_manager.send_message(message=f' Closing Profitbale Price Because of Liquidation on {platform}/n Price is {percent_to_liquidation} away from liquidation/n Mark Price: {mark_price}/n Liquidation Price: {liquidation_price}\n PNL {total_pnl}')
+    # async def check_liquidation(self, open_position_rows):
+    #     for _, row in open_position_rows.iterrows():
+    #         if not row['hyper_liquidation_px'] or not row['aevo_liquidation_px']: continue 
+    #         hyper_price = row['hyper_price']
+    #         aevo_price = row['aevo_price']
+    #         hyper_liquidation_price = float(row['hyper_liquidation_px'])
+    #         aevo_liquidation_price = float(row['aevo_liquidation_px'])
+    #         for platform in ('hyper','aevo'):
+    #             mark_price = hyper_price if platform == 'hyper' else aevo_price
+    #             liquidation_price = hyper_liquidation_price if platform == 'hyper' else aevo_liquidation_price
+    #             percent_to_liquidation = calculate_proximity_to_liquidation(mark_price=mark_price, liquidation_price=liquidation_price)
+    #             # first check if I need to close NOW
+    #             if percent_to_liquidation <= self.threshold:
+    #                 logger.info(f"Critical liquidation risk acting!")
+    #                 await self.close_rebalance_start()
+    #                 await self.telegram_manager.send_message(message=f' Critical Liquidation on {platform}/n Price is {percent_to_liquidation} away from liquidation/n Mark Price: {mark_price}/n Liquidation Price: {liquidation_price}')
+    #             # else if it's getting close check if I can close profitbale
+    #             elif percent_to_liquidation <= self.profitability_threshold:
+    #                 total_pnl = self.get_profitablity(hyper_price, aevo_price, row['buyer'])
+    #                 if total_pnl > 0:
+    #                     logger.info(f"Closing profitbale position {total_pnl}")
+    #                     await self.close_rebalance_start()
+    #                     await self.telegram_manager.send_message(message=f' Closing Profitbale Price Because of Liquidation on {platform}/n Price is {percent_to_liquidation} away from liquidation/n Mark Price: {mark_price}/n Liquidation Price: {liquidation_price}\n PNL {total_pnl}')
                 
             
     async def close_rebalance_start(self):
@@ -337,10 +338,10 @@ class TradingBot:
         aevo_mark_price = row['aevo_price']
         aevo_size = get_quantity(leverage=self.leverage,price=aevo_mark_price,balance=aevo_balance,coin=coin)
         
-        size = min(hyper_size,aevo_size)
+        size = min(hyper_size,aevo_size)/5
 
-        hyper_order = self.async_place_order(self.hyper_client,coin=coin,size=size,is_buy=buyer == 'HYPER_LIQUID')
-        aevo_order = self.async_place_order(self.aevo_client,instrument_id=instrument_id,is_buy=buyer == 'AEVO',reduce_only=False,quantity=size,)
+        hyper_order = self.async_place_order(self.hyper_client,coin=coin,size=size,is_buy=buyer == 'HYPER_LIQUID',limit_px=hyper_liquid_mark_price)
+        aevo_order = self.async_place_order(self.aevo_client,instrument_id=instrument_id,is_buy=buyer == 'AEVO',reduce_only=False,quantity=size,limit_px=aevo_mark_price)
         
         # hit them currently
         hyper_result , aevo_result = await asyncio.gather(hyper_order, aevo_order)
@@ -352,20 +353,21 @@ class TradingBot:
         await self.telegram_manager.send_message(message='Aevo Order Result/n' + str(aevo_result))
 
         # # get avg prices for both
-        # avg_hyper_price = float(hyper_result['response']['data']['statuses'][0]['filled']['avgPx'])
-        # avg_aevo_price = float(aevo_result['avg_price'])
+        avg_hyper_price = float(hyper_result['response']['data']['statuses'][0]['filled']['avgPx'])
+        avg_aevo_price = float(aevo_result['avg_price'])
 
-        # # then set up stop loss and take profit based on top and bottom
-        # low_price = avg_hyper_price if avg_hyper_price < avg_aevo_price else avg_aevo_price
-        # high_price = avg_hyper_price if avg_hyper_price > avg_aevo_price else avg_aevo_price
+        # then set up stop loss and take profit based on top and bottom
+        low_price = avg_hyper_price if avg_hyper_price < avg_aevo_price else avg_aevo_price
+        high_price = avg_hyper_price if avg_hyper_price > avg_aevo_price else avg_aevo_price
 
-        # low_price = low_price*(1.03)
-        # high_price = high_price*(.97)
+        # for leverage of 10 it's 10% move
+        low_price = low_price*(1.09)
+        high_price = high_price*(.91)
 
-        # hyper_tpsl = self.async_place_tpsl(self.hyper_client,coin=coin,size=size,is_buy=buyer == 'HYPER_LIQUID',low_price=low_price,high_price=high_price)
-        # aevo_tpsl = self.async_place_tpsl(self.aevo_client,instrument_id=instrument_id,is_buy=buyer == 'AEVO',quantity=size,low_price=low_price,high_price=high_price)
+        hyper_tpsl = self.async_place_tpsl(self.hyper_client,coin=coin,size=size,is_buy=buyer == 'HYPER_LIQUID',low_price=low_price,high_price=high_price)
+        aevo_tpsl = self.async_place_tpsl(self.aevo_client,instrument_id=instrument_id,is_buy=buyer == 'AEVO',quantity=size,low_price=low_price,high_price=high_price)
 
-        # hyper_tpsl_result , aevo_tpsl_result = await asyncio.gather(hyper_tpsl, aevo_tpsl)
+        hyper_tpsl_result , aevo_tpsl_result = await asyncio.gather(hyper_tpsl, aevo_tpsl)
 
         # get the accounts again to update df
         await self.get_accounts()

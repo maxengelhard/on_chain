@@ -65,11 +65,12 @@ class HyperLiquidClient:
         return result
 
 
-    def place_order(self,coin:str,size:float,is_buy:bool):
-        # Place market order
+    def place_order(self,coin:str,size:float,is_buy:bool,limit_px:float):
         logger.info(f"Creating hyper {'Buy' if is_buy else 'Sell'} order for {coin}")
         try:
-            order_result = self.exchange.market_open(coin=coin, is_buy=is_buy, sz=size)
+            # place market order
+            # order_result = self.exchange.market_open(coin=coin, is_buy=is_buy, sz=size)
+            order_result = self.exchange.order(coin=coin, is_buy=is_buy, sz=size,limit_px=limit_px,order_type={"limit": {"tif": "Gtc"}}) 
             return order_result
         except Exception as e:
             logger.info(f"Error opening hyper position. Error: {e}") 
