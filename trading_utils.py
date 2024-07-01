@@ -21,6 +21,18 @@ def get_quantity(leverage:int,price:float,balance:float,coin:str):
         return math.floor(size * 100) / 100  # Round to 2 decimal places for other coins
     
 
+def round_aevo_price(coin:str,price:float,buyer:bool):
+    if coin == 'DOGE':
+        if buyer: return math.floor(price*100000)/100000
+        else: return math.ceil(price*100000)/100000  # Floor to the nearest integer for DOGE
+    elif coin == 'BTC':
+        if buyer: return math.floor(price)
+        else: return math.ceil(price)
+    else:
+        if buyer: return math.floor(price * 10) / 10
+        else: return math.ceil(price*10)/10
+
+
 def round_price(price, max_sig_figs=5, max_decimals=6):
     if price == 0:
         return 0
@@ -28,3 +40,14 @@ def round_price(price, max_sig_figs=5, max_decimals=6):
     rounded_price = round(price, max_sig_figs - len(str(int(price))))
     # Ensure it does not exceed max decimals
     return round(rounded_price, max_decimals)
+
+
+def limit_price_setter(buyer:bool,price:float):
+    if buyer:
+        limit_px = price * .9999
+        print(buyer,price,limit_px)
+        return limit_px
+    else:
+        limit_px = price * 1.0001 
+        print(buyer,price,limit_px)
+        return limit_px

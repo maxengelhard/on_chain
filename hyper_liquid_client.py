@@ -14,7 +14,6 @@ from hyperliquid.info import Info
 from hyperliquid.utils import constants
 
 from trading_utils import round_price
-
 from dotenv import load_dotenv
 
 class HyperLiquidClient:
@@ -33,7 +32,7 @@ class HyperLiquidClient:
         
         self.info = Info(self.BASE_URL, skip_ws=True)
         self.exchange = Exchange(self.ACCOUNT, self.BASE_URL, account_address=self.ADDRESS)
-        
+    
     def get_account(self) -> None:
         user_info = self.info.user_state(address=self.ADDRESS)
         return user_info
@@ -70,7 +69,7 @@ class HyperLiquidClient:
         try:
             # place market order
             # order_result = self.exchange.market_open(coin=coin, is_buy=is_buy, sz=size)
-            order_result = self.exchange.order(coin=coin, is_buy=is_buy, sz=size,limit_px=limit_px,order_type={"limit": {"tif": "Gtc"}}) 
+            order_result = self.exchange.order(coin=coin, is_buy=is_buy, sz=size,limit_px=round_price(limit_px),order_type={"limit": {"tif": "Gtc"}}) 
             return order_result
         except Exception as e:
             logger.info(f"Error opening hyper position. Error: {e}") 
@@ -88,6 +87,7 @@ class HyperLiquidClient:
 
 
     def place_sl(self,coin:str,size:float,is_buy:bool,price:float):
+        trigger_price = price*(.91) if not is_buy else price*(1.09)
         trigger_price = round_price(price,max_sig_figs=5, max_decimals=6)
 
         stop_order_type = {"trigger": {"triggerPx": trigger_price, "isMarket": True, "tpsl": "sl"}}
@@ -95,7 +95,7 @@ class HyperLiquidClient:
         return stop_result
 
     def place_tp(self,coin:str,size:float,is_buy:bool,price:float):
-        trigger_price = price*(.97) if not is_buy else price*(1.03)
+        trigger_price = price*(.91) if not is_buy else price*(1.09)
         trigger_price = round_price(trigger_price,max_sig_figs=5, max_decimals=6)
         tp_order_type = {"trigger": {"triggerPx": trigger_price, "isMarket": True, "tpsl": "tp"}}
         take_result = self.exchange.order(coin=coin, is_buy=not is_buy, sz=size, limit_px=trigger_price, order_type=tp_order_type, reduce_only=True)

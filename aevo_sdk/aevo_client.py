@@ -45,8 +45,7 @@ class AevoClient:
         update_leverage_rsp = self.aevo_client.update_leverage(instrument_id=instrument_id,leverage=leverage)
         logger.info(f'Updated leverage on AEVO for {coin}: {leverage}')
         return update_leverage_rsp
-
-
+    
     def place_order(self,instrument_id,is_buy,reduce_only,quantity,limit_px):
         if not reduce_only: logger.info(f"Creating aevo {'Buy' if is_buy else 'Sell'} order for {instrument_id}")
         else: logger.info(f"Closing aevo order for {instrument_id}")
@@ -65,7 +64,8 @@ class AevoClient:
                 is_buy=is_buy,
                 quantity=quantity,
                 reduce_only=reduce_only, 
-                limit_price=limit_px
+                limit_price=limit_px,
+                post_only=False,
             )
             logger.info(response)
             return response
@@ -248,9 +248,10 @@ if __name__ == "__main__":
     # asyncio.run(aevo_create_order(instrument_id=1,is_buy=False,reduce_only=True,quantity=0.01))
     # response = asyncio.run(aevo_markets(asset='ETH',instrument='PERPETUAL'))
     aevo_client = AevoClient()
-    instrument_id = 1
-    size = 0.01
+    instrument_id = 5197 # sol
+    size = 0.9
+    limit_px = 116.239052
 
-    response = asyncio.run(aevo_client.place_order(instrument_id=instrument_id,is_buy=True,reduce_only=False,quantity=size))
+    response = aevo_client.place_order(instrument_id=instrument_id,is_buy=True,reduce_only=False,quantity=size,limit_px=limit_px)
     print(response)
 

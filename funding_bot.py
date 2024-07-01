@@ -9,7 +9,7 @@ from datetime import datetime
 ### rebalance ###
 from rebalance import rebalance
 ### utils ###
-from trading_utils import get_quantity,calculate_proximity_to_liquidation
+from trading_utils import get_quantity,calculate_proximity_to_liquidation,round_price,limit_price_setter,round_aevo_price
 
 ### websockets ###
 from hyper_websocket import HyperLiquidWebSocket
@@ -24,7 +24,7 @@ class TradingBot:
         self.hyper_client = HyperLiquidClient() 
         self.aevo_client = AevoClient()
         self.telegram_manager = TelegramManager()
-        self.coins = ['ETH','SOL','DOGE']
+        self.coins = ['BTC','ETH','DOGE']
         self.hyper_ws = HyperLiquidWebSocket(message_callback=self.process_hyper_message)
         self.aevo_ws = AevoWebSocket(message_callback=self.process_aevo_message,coins=self.coins)
         self.ws_started = False
@@ -235,7 +235,7 @@ class TradingBot:
         # Ensure this section is not executed concurrently
         async with self.lock:
             if not self.df.empty:
-                print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','hyper_price','aevo_price','pnl','funding_rate_spread','hours_needed']])
+                # print(self.df[['coin','hyper_funding_rate','aevo_funding_rate','hyper_price','aevo_price','pnl','funding_rate_spread','hours_needed']])
                 # Find the row with the maximum PNL
                 if not self.has_position:
                     max_pnl_row = self.df.loc[self.df['hours_needed'].idxmin()]
@@ -318,7 +318,7 @@ class TradingBot:
         await rebalance(hyper_client=self.hyper_client,aevo_client=self.aevo_client,hyper_account=self.hyper_account,aevo_account=self.aevo_account)
 
         # self.funding_rates()
-        # self.open_positions() 
+        # self.open_positions()
     
     async def async_place_order(self,client, **kwargs):
         return client.place_order(**kwargs)
@@ -330,18 +330,18 @@ class TradingBot:
         coin = row['coin']
         buyer = row['buyer']
         instrument_id = row['instrument_id']
-        hyper_balance = float(self.hyper_account['withdrawable'])*.9 # testing using 10%
+        hyper_balance = float(self.hyper_account['withdrawable'])*.2 # testing using 10%
         hyper_liquid_mark_price = row['hyper_price'] 
         hyper_size = get_quantity(leverage=self.leverage,price=hyper_liquid_mark_price,balance=hyper_balance,coin=coin)
         
-        aevo_balance = float(self.aevo_account['collaterals'][0]['available_balance'])*.9 # testing using 10%
+        aevo_balance = float(self.aevo_account['collaterals'][0]['available_balance'])*.2 # testing using 10%
         aevo_mark_price = row['aevo_price']
         aevo_size = get_quantity(leverage=self.leverage,price=aevo_mark_price,balance=aevo_balance,coin=coin)
         
-        size = min(hyper_size,aevo_size)/5
+        size = min(hyper_size,aevo_size)
 
         hyper_order = self.async_place_order(self.hyper_client,coin=coin,size=size,is_buy=buyer == 'HYPER_LIQUID',limit_px=hyper_liquid_mark_price)
-        aevo_order = self.async_place_order(self.aevo_client,instrument_id=instrument_id,is_buy=buyer == 'AEVO',reduce_only=False,quantity=size,limit_px=aevo_mark_price)
+        aevo_order = self.async_place_order(self.aevo_client,instrument_id=instrument_id,is_buy=buyer == 'AEVO',reduce_only=False,quantity=size,limit_px=round_aevo_price(coin=coin,price=aevo_mark_price,buyer=buyer=='AEVO'))
         
         # hit them currently
         hyper_result , aevo_result = await asyncio.gather(hyper_order, aevo_order)
@@ -352,22 +352,22 @@ class TradingBot:
         await self.telegram_manager.send_message(message='Hyper Order Result /n' + str(hyper_result))
         await self.telegram_manager.send_message(message='Aevo Order Result/n' + str(aevo_result))
 
-        # # get avg prices for both
-        avg_hyper_price = float(hyper_result['response']['data']['statuses'][0]['filled']['avgPx'])
-        avg_aevo_price = float(aevo_result['avg_price'])
+        # # # get avg prices for both
+        # avg_hyper_price = float(hyper_result['response']['data']['statuses'][0]['filled']['avgPx'])
+        # avg_aevo_price = float(aevo_result['avg_price'])
 
-        # then set up stop loss and take profit based on top and bottom
-        low_price = avg_hyper_price if avg_hyper_price < avg_aevo_price else avg_aevo_price
-        high_price = avg_hyper_price if avg_hyper_price > avg_aevo_price else avg_aevo_price
+        # # then set up stop loss and take profit based on top and bottom
+        # low_price = avg_hyper_price if avg_hyper_price < avg_aevo_price else avg_aevo_price
+        # high_price = avg_hyper_price if avg_hyper_price > avg_aevo_price else avg_aevo_price
 
-        # for leverage of 10 it's 10% move
-        low_price = low_price*(1.09)
-        high_price = high_price*(.91)
+        # # for leverage of 10 it's 10% move
+        # low_price = low_price*(1.09)
+        # high_price = high_price*(.91)
 
-        hyper_tpsl = self.async_place_tpsl(self.hyper_client,coin=coin,size=size,is_buy=buyer == 'HYPER_LIQUID',low_price=low_price,high_price=high_price)
-        aevo_tpsl = self.async_place_tpsl(self.aevo_client,instrument_id=instrument_id,is_buy=buyer == 'AEVO',quantity=size,low_price=low_price,high_price=high_price)
+        # hyper_tpsl = self.async_place_tpsl(self.hyper_client,coin=coin,size=size,is_buy=buyer == 'HYPER_LIQUID',low_price=low_price,high_price=high_price)
+        # aevo_tpsl = self.async_place_tpsl(self.aevo_client,instrument_id=instrument_id,is_buy=buyer == 'AEVO',quantity=size,low_price=low_price,high_price=high_price)
 
-        hyper_tpsl_result , aevo_tpsl_result = await asyncio.gather(hyper_tpsl, aevo_tpsl)
+        # hyper_tpsl_result , aevo_tpsl_result = await asyncio.gather(hyper_tpsl, aevo_tpsl)
 
         # get the accounts again to update df
         await self.get_accounts()
